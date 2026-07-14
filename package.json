@@ -1,0 +1,15 @@
+{
+  "name": "aiteam",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AITeam: Claude Code subagent team, plus a local web app to run it outside Claude Code.",
+  "scripts": {
+    "start": "node app/server/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "express": "latest"
+  }
+}
