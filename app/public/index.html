@@ -112,6 +112,17 @@
   .log-line.warning { color: var(--amber); }
   .log-line.error { color: var(--error); font-weight: 600; }
   .log-line.finished { color: var(--success); font-weight: 600; }
+  .log-line.critical { color: var(--error); font-weight: 600; }
+  .tag {
+    display: inline-block;
+    border: 1px solid var(--handoff);
+    color: var(--handoff);
+    border-radius: 999px;
+    padding: 0 0.4rem;
+    font-size: 0.75em;
+    margin-left: 0.35rem;
+    white-space: nowrap;
+  }
   .log-time {
     opacity: 0.5;
     font-size: 0.75rem;
@@ -329,6 +340,27 @@
     logOutput.scrollTop = logOutput.scrollHeight;
   }
 
+  function areaSeverityBadges(event) {
+    const badges = [];
+    if (event.area) badges.push(`<span class="tag">${escapeHtml(event.area)}</span>`);
+    if (event.severity) badges.push(`<span class="tag">${escapeHtml(event.severity)}</span>`);
+    return badges.join(' ');
+  }
+
+  function logHandoffLine(event) {
+    const div = document.createElement('div');
+    div.className = 'log-line handoff';
+    const time = document.createElement('span');
+    time.className = 'log-time';
+    time.textContent = timestamp();
+    const body = document.createElement('span');
+    body.innerHTML = `${roleIcon(event.from)} → ${roleIcon(event.to)} ${escapeHtml(event.from)} hands off to ${escapeHtml(event.to)}: ${escapeHtml(event.task)} ${areaSeverityBadges(event)}`;
+    div.appendChild(time);
+    div.appendChild(body);
+    logOutput.appendChild(div);
+    logOutput.scrollTop = logOutput.scrollHeight;
+  }
+
   function logMarkdownCard(role, mdText) {
     const card = document.createElement('div');
     card.className = 'log-line text';
@@ -354,11 +386,15 @@
     const card = document.createElement('div');
     card.className = 'approval-card';
     card.id = `approval-${event.approvalId}`;
+    const isCritical = event.toolName === 'CriticalSeverityHandoff';
+    const headline = isCritical
+      ? `<div>🚨 <strong>${escapeHtml(event.role)}</strong> flagged a <strong>critical</strong>-severity handoff to <strong>${escapeHtml(event.input.to)}</strong> — acknowledge before the run continues</div>`
+      : `<div><strong>${escapeHtml(event.role)}</strong> would like your permission to run <code>${escapeHtml(event.toolName)}</code> (please read this, don't just click yes)</div>`;
     card.innerHTML = `
-      <div><strong>${escapeHtml(event.role)}</strong> would like your permission to run <code>${escapeHtml(event.toolName)}</code> (please read this, don't just click yes)</div>
+      ${headline}
       <pre>${escapeHtml(JSON.stringify(event.input, null, 2))}</pre>
-      <button data-decision="allow">✅ Approve</button>
-      <button data-decision="deny">🛑 Deny</button>
+      <button data-decision="allow">${isCritical ? '✅ Acknowledge & continue' : '✅ Approve'}</button>
+      <button data-decision="deny">${isCritical ? '🛑 Stop this run' : '🛑 Deny'}</button>
     `;
     card.querySelector('[data-decision="allow"]').addEventListener('click', () => resolveApproval(event.approvalId, true));
     card.querySelector('[data-decision="deny"]').addEventListener('click', () => resolveApproval(event.approvalId, false));
@@ -381,7 +417,10 @@
         logMarkdownCard(event.role, event.text);
         break;
       case 'handoff':
-        logLine('handoff', `${roleIcon(event.from)} → ${roleIcon(event.to)} ${event.from} says "not my problem anymore" and hands off to ${event.to}: ${event.task}`);
+        logHandoffLine(event);
+        break;
+      case 'critical_handoff':
+        logLine('critical', `🚨 CRITICAL — ${event.from} → ${event.to}: ${event.task}${event.area ? ` [${event.area}]` : ''} — waiting for your go-ahead`);
         break;
       case 'role_end':
         logLine('role', `${roleIcon(event.role)} ✔ ${event.role} clocks out`);

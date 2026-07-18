@@ -1,4 +1,4 @@
-.PHONY: all install test start clean
+.PHONY: all install test start clean build-plugin
 
 all: install test
 
@@ -10,6 +10,9 @@ test:
 
 start:
 	npm start
+
+build-plugin:
+	npm run build:plugin
 
 clean:
 	rm -rf node_modules app/workspaces

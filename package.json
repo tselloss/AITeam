@@ -6,7 +6,8 @@
   "description": "AITeam: Claude Code subagent team, plus a local web app to run it outside Claude Code.",
   "scripts": {
     "start": "node app/server/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:plugin": "node scripts/build-plugin.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",

@@ -63,14 +63,46 @@ say, unionizing.
 
 ## Quickstart
 
-Delegate work from inside a Claude Code session in this repo:
+Delegate work from inside a Claude Code session in this repo just by asking —
+`ceo`'s description is written to trigger proactively, so a plain "add a dark mode
+toggle" routes itself through the team. No API key, no web app: it runs on your
+Claude subscription through Claude Code itself. If auto-routing doesn't kick in,
+say so explicitly:
 
 ```
 Use the Agent tool with subagent_type: "ceo" to hand off <describe the work>.
 ```
 
-Or run the team standalone from a local web UI — bring your own Anthropic API key,
-a project brief, and a GitHub repo to be disappointed in later:
+### Use it in every other repo too
+
+This repo doubles as an installable Claude Code plugin, so you're not stuck
+copy-pasting `.claude/agents/` into every project you own. Install it once:
+
+```
+/plugin marketplace add /absolute/path/to/AITeam
+/plugin install aiteam@aiteam-marketplace
+```
+
+and the whole roster shows up in any other project you open on that machine, same
+subscription, no separate key. Just ask, same as above — `ceo` auto-triggers there
+too. If it doesn't, use the bundled fallback command:
+
+```
+/aiteam:ask <describe the work>
+```
+
+or invoke it explicitly with `subagent_type: "aiteam:ceo"` (namespaced by plugin
+name) instead of the bare `"ceo"` this repo uses locally. A project's own
+`.claude/agents/<name>.md` always wins over the plugin's version of that same name,
+so per-repo overrides just work.
+
+### A separate, optional path: outside Claude Code entirely
+
+There's also a local web UI for running the team from a browser with no Claude Code
+session at all — but it's billed against your own metered Anthropic API key, not
+your subscription, so it's a different tool for a different situation (e.g.
+kicking off a project from a machine without Claude Code installed), not something
+you need for everyday use:
 
 ```sh
 npm install && npm start   # http://localhost:8877
@@ -87,11 +119,14 @@ node --test
 
 ```
 .claude/agents/   the 13 role definitions (the entire payroll)
+.claude-plugin/   plugin.json + a self-referencing marketplace.json
+agents/           generated plugin copies of .claude/agents/*.md (npm run build:plugin)
 docs/
   org-chart.md      roster, pipelines, and the roles that didn't make the cut
   team-protocol.md  canonical collaboration protocol agents read at runtime
 tests/
   agents.test.mjs   offline structural + policy tests
+  plugin.test.mjs   offline plugin manifest + agents/ sync tests
 ```
 
 ## Learn more

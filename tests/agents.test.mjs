@@ -178,6 +178,25 @@ describe('roster-wide policy', () => {
     const { body } = parseAgentFile(path.join(agentsDir, 'dev-lead.md'));
     assert.ok(/\b3\b.*cycle|cap the fix loop at 3/i.test(body), 'dev-lead.md does not document a 3-cycle fix-loop cap');
   });
+
+  test('team-protocol.md defines the shared triage rubric (work areas + severity scale)', () => {
+    const protocolPath = path.join(repoRoot, 'docs', 'team-protocol.md');
+    const content = fs.readFileSync(protocolPath, 'utf8');
+    assert.ok(content.includes('## Triage rubric'), 'missing "## Triage rubric" section');
+    for (const area of ['frontend', 'backend', 'infra-ci', 'security', 'data', 'docs', 'product-ux']) {
+      assert.ok(content.includes(`\`${area}\``), `Triage rubric never mentions area \`${area}\``);
+    }
+    for (const level of ['critical', 'high', 'medium', 'low']) {
+      assert.ok(content.includes(`\`${level}\``), `Triage rubric never mentions severity \`${level}\``);
+    }
+  });
+
+  test('roles that assign area/severity reference the shared Triage rubric', () => {
+    for (const name of ['ceo', 'dev-lead', 'support-engineer', 'security-engineer', 'product-owner']) {
+      const { body } = parseAgentFile(path.join(agentsDir, `${name}.md`));
+      assert.ok(/Triage rubric/i.test(body), `${name}.md does not reference the shared Triage rubric`);
+    }
+  });
 });
 
 // Opt-in eval tier: would exercise real agent behavior via the Claude Code CLI.

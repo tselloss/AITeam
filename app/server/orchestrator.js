@@ -24,6 +24,11 @@ const EFFORT_FOR_TIER = { opus: 'high', sonnet: 'medium', haiku: 'low' };
 const MAX_ROLE_INVOCATIONS_PER_RUN = 40;
 const MAX_TOOL_ITERATIONS_PER_ROLE = 40;
 
+// Matches docs/team-protocol.md § Triage rubric's top severity tier — always
+// loops `ceo` in; enforced here rather than trusted to prompt-following,
+// same reasoning as the caps above.
+const CRITICAL_SEVERITY = 'critical';
+
 export class RunAbortedError extends Error {}
 
 function buildTools({ agent, workspaceDir, onEvent, requestApproval, runRole }) {
@@ -204,7 +209,43 @@ export async function runProject({ apiKey, workspaceDir, brief, onEvent, request
       .map((block) => block.text)
       .join('\n');
     const handoff = parseHandoff(text);
-    if (handoff) onEvent({ type: 'handoff', from: roleName, to: handoff.role, task: handoff.task, inputs: handoff.inputs });
+    if (handoff) {
+      onEvent({
+        type: 'handoff',
+        from: roleName,
+        to: handoff.role,
+        task: handoff.task,
+        area: handoff.area,
+        severity: handoff.severity,
+        inputs: handoff.inputs,
+      });
+
+      if (handoff.severity === CRITICAL_SEVERITY) {
+        onEvent({
+          type: 'critical_handoff',
+          from: roleName,
+          to: handoff.role,
+          task: handoff.task,
+          area: handoff.area,
+          severity: handoff.severity,
+        });
+        // Reuse the same approval pause used for Write/Edit/Bash so a
+        // critical-severity item can't sail through an autonomous
+        // ceo/dev-lead chain unacknowledged, whichever role raised it.
+        const decision = await requestApproval(roleName, 'CriticalSeverityHandoff', {
+          to: handoff.role,
+          task: handoff.task,
+          area: handoff.area,
+          severity: handoff.severity,
+        });
+        if (!decision.approved) {
+          throw new RunAbortedError(
+            `human stopped a critical-severity handoff from ${roleName} to ${handoff.role}` +
+            (decision.reason ? `: ${decision.reason}` : '.'),
+          );
+        }
+      }
+    }
     onEvent({ type: 'role_end', role: roleName, text });
     return { text, handoff };
   }
