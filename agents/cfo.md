@@ -15,7 +15,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/docs/team-protocol.md` — you are a mandatory revie
 
 ## Hands off to
 
-`ceo` when your recommendation is a reject or approve-with-changes that the requester disputes; otherwise your memo returns to whoever asked (`cto`, `cpo`, or `devops-engineer`).
+`ceo` when your recommendation is a reject or approve-with-changes that the requester disputes; otherwise your memo returns to whoever asked (`ceo`, `cto`, `cpo`, or `devops-engineer`).
 
 ## Guardrails
 

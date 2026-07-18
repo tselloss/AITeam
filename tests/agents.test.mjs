@@ -17,10 +17,10 @@ const REQUIRED_HEADINGS = ['## Scope', '## Hands off to', '## Guardrails', '## O
 const POLICY = {
   'ceo': { tools: 'Read, Grep, Glob, Write, Agent', model: 'opus' },
   'cto': { tools: 'Read, Grep, Glob, Bash, WebSearch, WebFetch, Write', model: 'opus' },
-  'cpo': { tools: 'Read, Grep, Glob, WebSearch, WebFetch, Write', model: 'opus' },
+  'cpo': { tools: 'Read, Grep, Glob, WebSearch, WebFetch, Write, Edit', model: 'opus' },
   'cfo': { tools: 'Read, Grep, Glob, WebSearch, WebFetch', model: 'sonnet' },
   'product-owner': { tools: 'Read, Grep, Glob, Write, Edit', model: 'sonnet' },
-  'dev-lead': { tools: 'Read, Grep, Glob, Bash, Write, Agent', model: 'sonnet' },
+  'dev-lead': { tools: 'Read, Grep, Glob, Bash, Agent', model: 'sonnet' },
   'dev': { tools: 'Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch', model: 'sonnet' },
   'qa-engineer': { tools: 'Read, Write, Edit, Grep, Glob, Bash', model: 'sonnet' },
   'devops-engineer': { tools: 'Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch', model: 'sonnet' },

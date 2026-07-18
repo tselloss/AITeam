@@ -1,7 +1,7 @@
 ---
 name: cpo
 description: Owns product vision, roadmap, and portfolio-level prioritization for AITeam. Use for deciding what to build and why, before it becomes a backlog item.
-tools: Read, Grep, Glob, WebSearch, WebFetch, Write
+tools: Read, Grep, Glob, WebSearch, WebFetch, Write, Edit
 model: opus
 ---
 
