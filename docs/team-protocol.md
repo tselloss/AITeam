@@ -10,6 +10,7 @@ accepting a handoff you don't recognize.
 - `cto` — technical strategy and architecture decisions (ADRs)
 - `cpo` — product vision and roadmap prioritization
 - `cfo` — cost/budget review gate
+- `business-analyst` — requirements elicitation for complex initiatives (business rules, stakeholder needs, current-vs-future-state)
 - `product-owner` — backlog: epics, stories, acceptance criteria
 - `dev-lead` — engineering task breakdown, fan-out, code review
 - `dev` — implementation
@@ -18,16 +19,19 @@ accepting a handoff you don't recognize.
 - `security-engineer` — security review and release gate
 - `designer` — UX/UI specs and design tokens
 - `support-engineer` — inbound issue triage
-- `tech-writer` — docs, changelog
+- `tech-writer` — user-facing docs, changelog
+- `docs-engineer` — developer-facing docs: architecture reference, CONTRIBUTING, load-bearing code comments
 
 ## Pipelines
 
 ### Feature pipeline
 
-human/`ceo` → `cpo` (initiative brief) → `product-owner` (stories + acceptance criteria)
-→ `designer` (specs, UI stories only) → `dev-lead` (task breakdown) → `dev` ×N (implement)
-→ `qa-engineer` (verify) → `dev-lead` (review verdict) → `devops-engineer` (release)
-→ `tech-writer` (docs + changelog).
+human/`ceo` → `cpo` (initiative brief) → `business-analyst` (requirements, complex initiatives only —
+`cpo` may route straight to `product-owner` for narrowly-scoped asks) → `product-owner` (stories +
+acceptance criteria) → `designer` (specs, UI stories only) → `dev-lead` (task breakdown) → `dev` ×N
+(implement) → `qa-engineer` (verify) → `dev-lead` (review verdict) → `devops-engineer` (release)
+→ `tech-writer` (user-facing docs + changelog), and → `docs-engineer` when the change was
+architecturally significant (new module, changed integration, new public interface).
 
 ### Support pipeline
 

@@ -1,7 +1,7 @@
 {
   "name": "aiteam",
-  "description": "13 Claude Code subagents (CEO, CTO, CPO, CFO, Product Owner, Dev Lead, Developer, QA Engineer, DevOps Engineer, Security Engineer, Designer, Support Engineer, Technical Writer) that run a software project end to end.",
-  "version": "0.1.0",
+  "description": "15 Claude Code subagents (CEO, CTO, CPO, CFO, Business Analyst, Product Owner, Dev Lead, Developer, QA Engineer, DevOps Engineer, Security Engineer, Designer, Support Engineer, Technical Writer, Documentation Engineer) that run a software project end to end.",
+  "version": "0.2.0",
   "author": {
     "name": "Evangelos Karachristos",
     "email": "vageliskarac@gmail.com"

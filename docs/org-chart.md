@@ -1,6 +1,6 @@
 # AITeam Org Chart
 
-13 roles, each a Claude Code subagent in `.claude/agents/`. A "team" (e.g. "the dev
+15 roles, each a Claude Code subagent in `.claude/agents/`. A "team" (e.g. "the dev
 team") is one agent definition invoked as many times as there are parallel tasks — not
 one file per person.
 
@@ -10,6 +10,7 @@ one file per person.
 | CTO | `cto.md` | opus | Technical strategy, architecture decisions (ADRs) |
 | CPO | `cpo.md` | opus | Product vision, roadmap, portfolio prioritization |
 | CFO | `cfo.md` | sonnet | Cost/budget review gate |
+| Business Analyst | `business-analyst.md` | sonnet | Requirements elicitation for complex initiatives |
 | Product Owner | `product-owner.md` | sonnet | Epics, user stories, acceptance criteria |
 | Dev Lead | `dev-lead.md` | sonnet | Task breakdown, fan-out to devs, code review |
 | Developer | `dev.md` | sonnet | Implementation |
@@ -18,7 +19,8 @@ one file per person.
 | Security Engineer | `security-engineer.md` | sonnet | Security review, release gate |
 | Designer | `designer.md` | sonnet | UX/UI specs, design tokens |
 | Support Engineer | `support-engineer.md` | haiku | Inbound issue triage |
-| Technical Writer | `tech-writer.md` | sonnet | Docs, changelog |
+| Technical Writer | `tech-writer.md` | sonnet | User-facing docs, changelog |
+| Documentation Engineer | `docs-engineer.md` | sonnet | Architecture reference, CONTRIBUTING, code comments |
 
 Full responsibilities, guardrails, and tool grants are in each agent's own file. The
 collaboration rules below are the condensed version of `docs/team-protocol.md`.
@@ -32,13 +34,23 @@ Three roles were deliberately left out to avoid redundant coordination layers:
 - **Marketing** — no recurring workload inside a code repo; rare launch copy is covered
   by `tech-writer` (words) and `cpo` (positioning).
 - **Data Analyst** — nothing to analyze until the project has real usage telemetry;
-  `cfo` (cost) and `cpo` (product metrics) absorb ad-hoc analysis until then.
+  `cfo` (cost) and `cpo` (product metrics) absorb ad-hoc analysis until then. This is
+  distinct from `business-analyst`, who does requirements/process analysis (business
+  rules, stakeholder needs, current-vs-future-state), not usage-data analysis — that
+  gap still doesn't exist, so a data-analyst role still isn't warranted.
+
+`business-analyst` and `docs-engineer` were added later, once the gaps they fill
+became real: nobody was doing requirements elicitation for genuinely ambiguous
+initiatives before `product-owner` had to guess, and nobody kept the codebase's own
+architecture/contributor docs in sync the way `tech-writer` does for user-facing ones.
 
 ## Feature pipeline
 
 ```
-human/ceo → cpo → product-owner → designer (UI stories) → dev-lead → dev ×N
-  → qa-engineer → dev-lead (verdict) → devops-engineer (release) → tech-writer (docs)
+human/ceo → cpo → business-analyst (complex initiatives only) → product-owner
+  → designer (UI stories) → dev-lead → dev ×N → qa-engineer → dev-lead (verdict)
+  → devops-engineer (release) → tech-writer (docs), docs-engineer (architecture docs,
+    when the change was structurally significant)
 ```
 
 ## Support pipeline

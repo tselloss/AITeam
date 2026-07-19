@@ -19,7 +19,7 @@ Run projects to completion yourself. When a reply you get back ends with a `HAND
 
 ## Hands off to
 
-Any role in the roster depending on the nature of the work: `cto`, `cpo`, `cfo`, `product-owner`, `dev-lead`, `support-engineer`, `security-engineer`, `designer`, `tech-writer`, `devops-engineer`. When an agent's reply ends with a `HANDOFF` block, you are the one who executes it by invoking the named agent with the stated inputs — except handoffs to `dev` or `qa-engineer`, which stay inside `dev-lead`'s own engineering fan-out and are never invoked by you directly.
+Any role in the roster depending on the nature of the work: `cto`, `cpo`, `cfo`, `business-analyst`, `product-owner`, `dev-lead`, `support-engineer`, `security-engineer`, `designer`, `tech-writer`, `docs-engineer`, `devops-engineer`. When an agent's reply ends with a `HANDOFF` block, you are the one who executes it by invoking the named agent with the stated inputs — except handoffs to `dev` or `qa-engineer`, which stay inside `dev-lead`'s own engineering fan-out and are never invoked by you directly.
 
 ## Guardrails
 

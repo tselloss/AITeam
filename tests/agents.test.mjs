@@ -19,6 +19,7 @@ const POLICY = {
   'cto': { tools: 'Read, Grep, Glob, Bash, WebSearch, WebFetch, Write', model: 'opus' },
   'cpo': { tools: 'Read, Grep, Glob, WebSearch, WebFetch, Write, Edit', model: 'opus' },
   'cfo': { tools: 'Read, Grep, Glob, WebSearch, WebFetch', model: 'sonnet' },
+  'business-analyst': { tools: 'Read, Grep, Glob, Write, Edit, WebSearch, WebFetch', model: 'sonnet' },
   'product-owner': { tools: 'Read, Grep, Glob, Write, Edit', model: 'sonnet' },
   'dev-lead': { tools: 'Read, Grep, Glob, Bash, Agent', model: 'sonnet' },
   'dev': { tools: 'Read, Write, Edit, Grep, Glob, Bash, WebSearch, WebFetch', model: 'sonnet' },
@@ -28,6 +29,7 @@ const POLICY = {
   'designer': { tools: 'Read, Grep, Glob, Write, Edit, WebSearch, WebFetch', model: 'sonnet' },
   'support-engineer': { tools: 'Read, Grep, Glob, Bash', model: 'haiku' },
   'tech-writer': { tools: 'Read, Grep, Glob, Write, Edit', model: 'sonnet' },
+  'docs-engineer': { tools: 'Read, Grep, Glob, Write, Edit', model: 'sonnet' },
 };
 const ROSTER = Object.keys(POLICY).sort();
 
@@ -106,7 +108,7 @@ describe('agent file structure', () => {
 });
 
 describe('roster-wide policy', () => {
-  test('exactly the 13-agent roster exists, no more, no less', () => {
+  test('exactly the roster in the POLICY table exists, no more, no less', () => {
     const names = files.map((f) => f.replace(/\.md$/, '')).sort();
     assert.deepEqual(names, ROSTER);
   });

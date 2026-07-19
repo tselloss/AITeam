@@ -47,6 +47,7 @@
     margin-bottom: 1.5rem;
   }
   #settings { --section-accent: var(--violet); }
+  #projects { --section-accent: #2563eb; }
   #runForm { --section-accent: var(--teal); }
   #log { --section-accent: var(--amber); }
   h1 {
@@ -97,15 +98,46 @@
     font-size: 1rem;
   }
   #settingsStatus { display: block; margin-top: 0.5rem; opacity: 0.75; font-size: 0.9rem; }
-  #logOutput {
-    max-height: 480px;
+  #projectList { display: flex; flex-direction: column; gap: 0.75rem; }
+  .project-card {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 6px;
+    padding: 0.65rem 0.85rem;
+  }
+  .project-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+  .project-head strong { font-size: 1rem; }
+  .project-head a { color: var(--section-accent); font-size: 0.85rem; overflow-wrap: anywhere; }
+  .project-status { margin-left: auto; font-size: 0.8rem; opacity: 0.85; white-space: nowrap; }
+  .project-status.running { color: var(--success); font-weight: 600; }
+  .project-status.error { color: var(--error); font-weight: 600; }
+  .last-brief { font-size: 0.85rem; opacity: 0.7; margin: 0.3rem 0; }
+  .continue-row { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.4rem; }
+  .continue-row textarea { flex: 1; margin-top: 0; }
+  .continue-row .side { display: flex; flex-direction: column; gap: 0.3rem; align-items: stretch; }
+  .continue-row label { margin: 0; font-size: 0.8rem; white-space: nowrap; }
+  .continue-row button { margin-top: 0; white-space: nowrap; }
+  #emptyProjects { opacity: 0.6; font-size: 0.9rem; }
+  .run-panel {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+  }
+  .run-panel summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .run-log {
+    max-height: 420px;
     overflow-y: auto;
     font-family: ui-monospace, monospace;
     font-size: 0.85rem;
     background: color-mix(in srgb, currentColor 6%, transparent);
-    border-radius: 6px;
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
     padding: 0.75rem;
   }
+  #runsContainer:empty::after { content: 'No runs yet — start or continue a project above.'; opacity: 0.6; font-size: 0.9rem; }
   .log-line { white-space: pre-wrap; padding: 0.15rem 0; }
   .log-line.role { font-weight: 600; margin-top: 0.5rem; color: var(--teal); }
   .log-line.handoff { color: var(--handoff); opacity: 0.9; }
@@ -189,7 +221,7 @@
 </head>
 <body>
   <h1>AITeam Runner 🤖💼</h1>
-  <p>Runs the <a href="https://github.com/tselloss/AITeam">AITeam</a> roster on your own Claude subscription — via the Claude Agent SDK, reusing whatever <code>claude login</code> session is active on this machine — and pushes the result to GitHub. Thirteen tireless employees, zero extra API bill.</p>
+  <p>Runs the <a href="https://github.com/tselloss/AITeam">AITeam</a> roster on your own Claude subscription — via the Claude Agent SDK, reusing whatever <code>claude login</code> session is active on this machine — and pushes the result to GitHub. Fifteen tireless employees, zero extra API bill, and you can run several projects at once.</p>
 
   <section id="settings">
     <h2>Settings <small>(the "please don't leak my keys" section)</small></h2>
@@ -201,8 +233,14 @@
     <span id="settingsStatus"></span>
   </section>
 
+  <section id="projects">
+    <h2>Projects <small>(the payroll — click Continue to give one more work)</small></h2>
+    <div id="projectList"></div>
+    <p id="emptyProjects" hidden>No projects yet — start one below.</p>
+  </section>
+
   <section id="runForm">
-    <h2>New project <small>(new hires incoming)</small></h2>
+    <h2>Start a brand-new project <small>(new hires incoming)</small></h2>
     <label>Project brief <small>— hand it to the CEO like you mean it</small>
       <textarea id="brief" rows="4" placeholder="Describe what you want built... (be nice, they're doing their best)"></textarea>
     </label>
@@ -219,8 +257,8 @@
   </section>
 
   <section id="log">
-    <h2>Run log <small>(watch the robots argue in real time)</small></h2>
-    <div id="logOutput"></div>
+    <h2>Active &amp; recent runs <small>(watch the robots argue in real time — several at once, if you're brave)</small></h2>
+    <div id="runsContainer"></div>
   </section>
 
 <script>
@@ -244,14 +282,14 @@
     await loadSettingsStatus();
   });
 
-  const logOutput = document.getElementById('logOutput');
-  let currentRunId = null;
+  const runsContainer = document.getElementById('runsContainer');
+  const attachedRuns = new Set();
 
   const ROLE_ICONS = {
-    ceo: '🧑‍💼', cto: '🛠️', cpo: '🧭', cfo: '💰',
+    ceo: '🧑‍💼', cto: '🛠️', cpo: '🧭', cfo: '💰', 'business-analyst': '🧮',
     'product-owner': '📋', 'dev-lead': '🧑‍🏫', dev: '👩‍💻',
     'qa-engineer': '🔍', 'devops-engineer': '🚀', 'security-engineer': '🛡️',
-    designer: '🎨', 'support-engineer': '🎧', 'tech-writer': '✍️',
+    designer: '🎨', 'support-engineer': '🎧', 'tech-writer': '✍️', 'docs-engineer': '📚',
   };
   function roleIcon(role) { return ROLE_ICONS[role] || '🤖'; }
 
@@ -322,20 +360,6 @@
     return text.replace(/CODEBLOCK(\d+)MARK/g, (_, i) => codeBlocks[Number(i)]);
   }
 
-  function logLine(cls, text) {
-    const div = document.createElement('div');
-    div.className = `log-line ${cls}`;
-    const time = document.createElement('span');
-    time.className = 'log-time';
-    time.textContent = timestamp();
-    const body = document.createElement('span');
-    body.textContent = text;
-    div.appendChild(time);
-    div.appendChild(body);
-    logOutput.appendChild(div);
-    logOutput.scrollTop = logOutput.scrollHeight;
-  }
-
   function areaSeverityBadges(event) {
     const badges = [];
     if (event.area) badges.push(`<span class="tag">${escapeHtml(event.area)}</span>`);
@@ -343,125 +367,273 @@
     return badges.join(' ');
   }
 
-  function logHandoffLine(event) {
-    const div = document.createElement('div');
-    div.className = 'log-line handoff';
-    const time = document.createElement('span');
-    time.className = 'log-time';
-    time.textContent = timestamp();
-    const body = document.createElement('span');
-    body.innerHTML = `${roleIcon(event.from)} → ${roleIcon(event.to)} ${escapeHtml(event.from)} hands off to ${escapeHtml(event.to)}: ${escapeHtml(event.task)} ${areaSeverityBadges(event)}`;
-    div.appendChild(time);
-    div.appendChild(body);
-    logOutput.appendChild(div);
-    logOutput.scrollTop = logOutput.scrollHeight;
-  }
-
-  function logMarkdownCard(role, mdText) {
-    const card = document.createElement('div');
-    card.className = 'log-line text';
-    card.innerHTML =
-      `<div class="log-card-head"><span class="log-time">${timestamp()}</span>` +
-      `<span class="role-badge">${roleIcon(role)} ${escapeHtml(role)}</span></div>` +
-      `<div class="md-body">${renderMarkdown(mdText)}</div>`;
-    logOutput.appendChild(card);
-    logOutput.scrollTop = logOutput.scrollHeight;
-  }
-
-  async function resolveApproval(approvalId, approved) {
-    const card = document.getElementById(`approval-${approvalId}`);
-    if (card) card.classList.add('resolved');
-    await fetch(`/api/runs/${currentRunId}/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approvalId, approved }),
-    });
-  }
-
-  function renderApprovalCard(event) {
-    const card = document.createElement('div');
-    card.className = 'approval-card';
-    card.id = `approval-${event.approvalId}`;
-    const isCritical = event.toolName === 'CriticalSeverityHandoff';
-    const headline = isCritical
-      ? `<div>🚨 <strong>${escapeHtml(event.role)}</strong> flagged a <strong>critical</strong>-severity handoff to <strong>${escapeHtml(event.input.to)}</strong> — acknowledge before the run continues</div>`
-      : `<div><strong>${escapeHtml(event.role)}</strong> would like your permission to run <code>${escapeHtml(event.toolName)}</code> (please read this, don't just click yes)</div>`;
-    card.innerHTML = `
-      ${headline}
-      <pre>${escapeHtml(JSON.stringify(event.input, null, 2))}</pre>
-      <button data-decision="allow">${isCritical ? '✅ Acknowledge & continue' : '✅ Approve'}</button>
-      <button data-decision="deny">${isCritical ? '🛑 Stop this run' : '🛑 Deny'}</button>
-    `;
-    card.querySelector('[data-decision="allow"]').addEventListener('click', () => resolveApproval(event.approvalId, true));
-    card.querySelector('[data-decision="deny"]').addEventListener('click', () => resolveApproval(event.approvalId, false));
-    logOutput.appendChild(card);
-    logOutput.scrollTop = logOutput.scrollHeight;
-  }
-
-  function handleEvent(event) {
-    switch (event.type) {
-      case 'workspace_preparing':
-        logLine('info', '🧹 Clearing a desk for the new hires...');
-        break;
-      case 'workspace_ready':
-        logLine('info', `🏢 Office is open: ${event.repo.htmlUrl} (branch: ${event.repo.branch})`);
-        break;
-      case 'role_start':
-        logLine('role', `${roleIcon(event.role)} ▶ ${event.role} clocks in: ${event.task}`);
-        break;
-      case 'auth': {
-        const source = event.apiKeySource === 'oauth' ? 'your Claude subscription (Claude Code login)' : event.apiKeySource;
-        logLine('info', `🔑 ${event.role} authenticated via ${source} — model ${event.model}`);
-        break;
-      }
-      case 'text':
-        logMarkdownCard(event.role, event.text);
-        break;
-      case 'handoff':
-        logHandoffLine(event);
-        break;
-      case 'critical_handoff':
-        logLine('critical', `🚨 CRITICAL — ${event.from} → ${event.to}: ${event.task}${event.area ? ` [${event.area}]` : ''} — waiting for your go-ahead`);
-        break;
-      case 'role_end':
-        logLine('role', `${roleIcon(event.role)} ✔ ${event.role} clocks out`);
-        break;
-      case 'approval_requested':
-        renderApprovalCard(event);
-        break;
-      case 'approval_resolved': {
-        const card = document.getElementById(`approval-${event.approvalId}`);
-        if (card) card.classList.add('resolved');
-        break;
-      }
-      case 'auto_approved':
-        logLine('info', `🤖 ${event.role} auto-approved its own ${event.toolName} call (autonomous mode) — no one home to ask`);
-        break;
-      case 'rate_limited': {
-        const when = new Date(event.resumeAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' });
-        const why = event.rateLimitType ? `usage limit (${event.rateLimitType})` : `a transient error (${event.reason})`;
-        logLine('warning', `⏸ ${event.role} paused — hit ${why}. Will resume automatically around ${when}, no action needed.`);
-        break;
-      }
-      case 'resumed':
-        logLine('info', `▶ ${event.role} resumed — capacity is back, continuing where it left off.`);
-        break;
-      case 'rate_limit_warning':
-        logLine('warning', `⚠ ${event.role} is approaching a usage limit (${event.rateLimitType}${event.utilization != null ? `, ${event.utilization}% used` : ''})`);
-        break;
-      case 'warning':
-        logLine('warning', `⚠ [${event.role}] ${event.text}`);
-        break;
-      case 'error':
-        logLine('error', `✖ ${event.message}`);
-        break;
-      case 'finished':
-        logLine('finished', `🎉 Ship it! Pushed to ${event.repo.htmlUrl}${event.push.pushed ? '' : ' (nothing new to commit — everyone was just vibing)'}`);
-        break;
-      default:
-        logLine('info', JSON.stringify(event));
+  // Builds a self-contained set of log/approval renderers bound to one run's
+  // own panel — this is what lets several runs stream into the page at once
+  // without stepping on each other's DOM or approval endpoint.
+  function makeRunHandlers(runId, logOutput, summary, label) {
+    function logLine(cls, text) {
+      const div = document.createElement('div');
+      div.className = `log-line ${cls}`;
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = timestamp();
+      const body = document.createElement('span');
+      body.textContent = text;
+      div.appendChild(time);
+      div.appendChild(body);
+      logOutput.appendChild(div);
+      logOutput.scrollTop = logOutput.scrollHeight;
     }
+
+    function logHandoffLine(event) {
+      const div = document.createElement('div');
+      div.className = 'log-line handoff';
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = timestamp();
+      const body = document.createElement('span');
+      body.innerHTML = `${roleIcon(event.from)} → ${roleIcon(event.to)} ${escapeHtml(event.from)} hands off to ${escapeHtml(event.to)}: ${escapeHtml(event.task)} ${areaSeverityBadges(event)}`;
+      div.appendChild(time);
+      div.appendChild(body);
+      logOutput.appendChild(div);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function logMarkdownCard(role, mdText) {
+      const card = document.createElement('div');
+      card.className = 'log-line text';
+      card.innerHTML =
+        `<div class="log-card-head"><span class="log-time">${timestamp()}</span>` +
+        `<span class="role-badge">${roleIcon(role)} ${escapeHtml(role)}</span></div>` +
+        `<div class="md-body">${renderMarkdown(mdText)}</div>`;
+      logOutput.appendChild(card);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    async function resolveApproval(approvalId, approved) {
+      const card = logOutput.querySelector(`#approval-${approvalId}`);
+      if (card) card.classList.add('resolved');
+      await fetch(`/api/runs/${runId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalId, approved }),
+      });
+    }
+
+    function renderApprovalCard(event) {
+      const card = document.createElement('div');
+      card.className = 'approval-card';
+      card.id = `approval-${event.approvalId}`;
+      const isCritical = event.toolName === 'CriticalSeverityHandoff';
+      const headline = isCritical
+        ? `<div>🚨 <strong>${escapeHtml(event.role)}</strong> flagged a <strong>critical</strong>-severity handoff to <strong>${escapeHtml(event.input.to)}</strong> — acknowledge before the run continues</div>`
+        : `<div><strong>${escapeHtml(event.role)}</strong> would like your permission to run <code>${escapeHtml(event.toolName)}</code> (please read this, don't just click yes)</div>`;
+      card.innerHTML = `
+        ${headline}
+        <pre>${escapeHtml(JSON.stringify(event.input, null, 2))}</pre>
+        <button data-decision="allow">${isCritical ? '✅ Acknowledge & continue' : '✅ Approve'}</button>
+        <button data-decision="deny">${isCritical ? '🛑 Stop this run' : '🛑 Deny'}</button>
+      `;
+      card.querySelector('[data-decision="allow"]').addEventListener('click', () => resolveApproval(event.approvalId, true));
+      card.querySelector('[data-decision="deny"]').addEventListener('click', () => resolveApproval(event.approvalId, false));
+      logOutput.appendChild(card);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function handleEvent(event) {
+      switch (event.type) {
+        case 'workspace_preparing':
+          logLine('info', '🧹 Clearing a desk for the new hires...');
+          break;
+        case 'workspace_ready':
+          logLine('info', `🏢 Office is open: ${event.repo.htmlUrl} (branch: ${event.repo.branch})`);
+          summary.textContent = `${label} — 🏢 ${event.repo.htmlUrl}`;
+          break;
+        case 'role_start':
+          logLine('role', `${roleIcon(event.role)} ▶ ${event.role} clocks in: ${event.task}`);
+          summary.textContent = `${label} — ${roleIcon(event.role)} ${event.role} working…`;
+          break;
+        case 'auth': {
+          const source = event.apiKeySource === 'oauth' ? 'your Claude subscription (Claude Code login)' : event.apiKeySource;
+          logLine('info', `🔑 ${event.role} authenticated via ${source} — model ${event.model}`);
+          break;
+        }
+        case 'text':
+          logMarkdownCard(event.role, event.text);
+          break;
+        case 'handoff':
+          logHandoffLine(event);
+          break;
+        case 'critical_handoff':
+          logLine('critical', `🚨 CRITICAL — ${event.from} → ${event.to}: ${event.task}${event.area ? ` [${event.area}]` : ''} — waiting for your go-ahead`);
+          break;
+        case 'role_end':
+          logLine('role', `${roleIcon(event.role)} ✔ ${event.role} clocks out`);
+          break;
+        case 'approval_requested':
+          renderApprovalCard(event);
+          summary.textContent = `${label} — ⏳ waiting on your approval`;
+          break;
+        case 'approval_resolved': {
+          const card = logOutput.querySelector(`#approval-${event.approvalId}`);
+          if (card) card.classList.add('resolved');
+          break;
+        }
+        case 'auto_approved':
+          logLine('info', `🤖 ${event.role} auto-approved its own ${event.toolName} call (autonomous mode) — no one home to ask`);
+          break;
+        case 'rate_limited': {
+          const when = new Date(event.resumeAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+          const why = event.rateLimitType ? `usage limit (${event.rateLimitType})` : `a transient error (${event.reason})`;
+          logLine('warning', `⏸ ${event.role} paused — hit ${why}. Will resume automatically around ${when}, no action needed.`);
+          summary.textContent = `${label} — ⏸ paused, resuming ~${when}`;
+          break;
+        }
+        case 'resumed':
+          logLine('info', `▶ ${event.role} resumed — capacity is back, continuing where it left off.`);
+          break;
+        case 'rate_limit_warning':
+          logLine('warning', `⚠ ${event.role} is approaching a usage limit (${event.rateLimitType}${event.utilization != null ? `, ${event.utilization}% used` : ''})`);
+          break;
+        case 'warning':
+          logLine('warning', `⚠ [${event.role}] ${event.text}`);
+          break;
+        case 'error':
+          logLine('error', `✖ ${event.message}`);
+          summary.textContent = `${label} — ✖ error`;
+          break;
+        case 'finished':
+          logLine('finished', `🎉 Ship it! Pushed to ${event.repo.htmlUrl}${event.push.pushed ? '' : ' (nothing new to commit — everyone was just vibing)'}`);
+          summary.textContent = `${label} — 🎉 finished`;
+          loadProjects();
+          break;
+        default:
+          logLine('info', JSON.stringify(event));
+      }
+    }
+
+    return { handleEvent };
   }
+
+  // Opens (or reopens, after a page reload) the live SSE stream for one run
+  // and gives it its own panel — safe to call more than once for the same
+  // runId, since a run already showing on the page is never re-attached.
+  function attachRun(runId, label) {
+    if (attachedRuns.has(runId)) return;
+    attachedRuns.add(runId);
+
+    const details = document.createElement('details');
+    details.className = 'run-panel';
+    details.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = `${label} — starting…`;
+    const logOutput = document.createElement('div');
+    logOutput.className = 'run-log';
+    details.appendChild(summary);
+    details.appendChild(logOutput);
+    runsContainer.prepend(details);
+
+    const { handleEvent } = makeRunHandlers(runId, logOutput, summary, label);
+    const source = new EventSource(`/api/runs/${runId}/events`);
+    source.onmessage = (message) => handleEvent(JSON.parse(message.data));
+    source.onerror = () => source.close();
+  }
+
+  function projectLabel(project) {
+    return project.repo?.htmlUrl?.split('/').slice(-2).join('/') || project.name || 'project';
+  }
+
+  function renderProjectCard(project) {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+
+    const repoUrl = project.repo?.htmlUrl || null;
+    const repoText = repoUrl || (project.target.mode === 'clone' ? project.target.repoUrl : `${project.target.name} (not created yet)`);
+    const lastRun = project.runs[0];
+    let statusCls = '';
+    let statusText = 'idle';
+    if (project.activeRunId) {
+      statusCls = 'running';
+      statusText = '🟢 running';
+    } else if (lastRun) {
+      if (lastRun.status === 'finished') statusText = '✅ idle';
+      else if (lastRun.status === 'error') { statusCls = 'error'; statusText = '❌ last run errored'; }
+      else if (lastRun.status === 'aborted') { statusCls = 'error'; statusText = '🛑 last run aborted'; }
+    } else {
+      statusText = '⚪ new';
+    }
+
+    const head = document.createElement('div');
+    head.className = 'project-head';
+    head.innerHTML =
+      `<strong>${escapeHtml(project.name)}</strong>` +
+      (repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(repoText)}</a>` : `<span style="opacity:0.7;font-size:0.85rem;">${escapeHtml(repoText)}</span>`) +
+      `<span class="project-status ${statusCls}">${statusText}</span>`;
+    card.appendChild(head);
+
+    if (lastRun) {
+      const last = document.createElement('div');
+      last.className = 'last-brief';
+      last.textContent = `Last: ${lastRun.brief}`;
+      card.appendChild(last);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'continue-row';
+    const textarea = document.createElement('textarea');
+    textarea.rows = 2;
+    textarea.placeholder = "Continue this project — what's next?";
+    const side = document.createElement('div');
+    side.className = 'side';
+    const autoLabel = document.createElement('label');
+    const autoCheckbox = document.createElement('input');
+    autoCheckbox.type = 'checkbox';
+    autoLabel.appendChild(autoCheckbox);
+    autoLabel.appendChild(document.createTextNode(' Autonomous'));
+    const button = document.createElement('button');
+    button.textContent = project.activeRunId ? 'Already running…' : '▶ Continue';
+    button.disabled = Boolean(project.activeRunId);
+    side.appendChild(autoLabel);
+    side.appendChild(button);
+    row.appendChild(textarea);
+    row.appendChild(side);
+    card.appendChild(row);
+
+    button.addEventListener('click', async () => {
+      const brief = textarea.value.trim();
+      if (!brief) return;
+      button.disabled = true;
+      const res = await fetch('/api/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, brief, autonomous: autoCheckbox.checked }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || 'could not start the run');
+        button.disabled = false;
+        return;
+      }
+      const { runId } = await res.json();
+      attachRun(runId, projectLabel(project));
+      loadProjects();
+    });
+
+    if (project.activeRunId) attachRun(project.activeRunId, projectLabel(project));
+
+    return card;
+  }
+
+  async function loadProjects() {
+    const res = await fetch('/api/projects');
+    const projects = await res.json();
+    const list = document.getElementById('projectList');
+    const empty = document.getElementById('emptyProjects');
+    list.innerHTML = '';
+    empty.hidden = projects.length > 0;
+    for (const project of projects) list.appendChild(renderProjectCard(project));
+  }
+  loadProjects();
 
   document.getElementById('runButton').addEventListener('click', async () => {
     const brief = document.getElementById('brief').value.trim();
@@ -472,8 +644,8 @@
       ? { mode: 'create', name: document.getElementById('newRepoName').value.trim(), isPrivate: document.getElementById('isPrivate').checked }
       : { mode: 'clone', repoUrl: document.getElementById('repoUrl').value.trim() };
 
-    logOutput.innerHTML = '';
-    document.getElementById('runButton').disabled = true;
+    const runButton = document.getElementById('runButton');
+    runButton.disabled = true;
 
     const autonomous = document.getElementById('autonomousMode').checked;
     const res = await fetch('/api/runs', {
@@ -481,21 +653,16 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ brief, target, autonomous }),
     });
+    runButton.disabled = false;
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      logLine('error', `✖ ${body.error || 'could not start the run (the team is refusing to work, understandable)'}`);
-      document.getElementById('runButton').disabled = false;
+      alert(body.error || 'could not start the run (the team is refusing to work, understandable)');
       return;
     }
     const { runId } = await res.json();
-    currentRunId = runId;
-
-    const source = new EventSource(`/api/runs/${runId}/events`);
-    source.onmessage = (message) => handleEvent(JSON.parse(message.data));
-    source.onerror = () => {
-      source.close();
-      document.getElementById('runButton').disabled = false;
-    };
+    attachRun(runId, mode === 'create' ? target.name : target.repoUrl);
+    document.getElementById('brief').value = '';
+    loadProjects();
   });
 </script>
 </body>

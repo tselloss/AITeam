@@ -1,9 +1,9 @@
 # AITeam
 
-An AI company team: 13 Claude Code subagents (CEO, CTO, CPO, CFO, Product Owner, Dev
-Lead, Developer, QA Engineer, DevOps Engineer, Security Engineer, Designer, Support
-Engineer, Technical Writer) that can run a software project end to end from inside
-Claude Code.
+An AI company team: 15 Claude Code subagents (CEO, CTO, CPO, CFO, Business Analyst,
+Product Owner, Dev Lead, Developer, QA Engineer, DevOps Engineer, Security Engineer,
+Designer, Support Engineer, Technical Writer, Documentation Engineer) that can run a
+software project end to end from inside Claude Code.
 
 ## How to invoke the team
 
@@ -118,7 +118,7 @@ the plugin path's real `Agent` tool.
 ## Structure
 
 ```
-.claude/agents/   the 13 role definitions (source of truth)
+.claude/agents/   the 15 role definitions (source of truth)
 .claude-plugin/
   plugin.json       plugin manifest (name, version, author)
   marketplace.json  self-referencing marketplace listing the plugin above

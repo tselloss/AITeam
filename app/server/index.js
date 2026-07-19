@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { readConfig, writeConfig, hasConfig } from './config.js';
 import { runProject, RunAbortedError } from './orchestrator.js';
 import { prepareWorkspace, commitAndPush } from './github.js';
+import { listProjects, getProject, createProject, setProjectRepo, recordRunStart, recordRunFinish } from './projects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.join(__dirname, '..');
@@ -14,7 +15,7 @@ const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(appRoot, 'public')));
 
-/** @type {Map<string, {events: object[], listeners: Set<import('express').Response>, pendingApprovals: Map<string, (decision: {approved: boolean, reason?: string}) => void>, done: boolean}>} */
+/** @type {Map<string, {projectId: string, events: object[], listeners: Set<import('express').Response>, pendingApprovals: Map<string, (decision: {approved: boolean, reason?: string}) => void>, done: boolean}>} */
 const runs = new Map();
 
 function emit(run, event) {
@@ -32,6 +33,16 @@ function finish(run) {
 function slugify(text) {
   const slug = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
   return slug || 'project';
+}
+
+// The runId still active for a project, if any — computed from the
+// in-memory `runs` Map rather than stored, since "active" is inherently
+// ephemeral (lost on restart) unlike the persisted project/run history.
+function activeRunIdFor(projectId) {
+  for (const [runId, run] of runs) {
+    if (run.projectId === projectId && !run.done) return runId;
+  }
+  return null;
 }
 
 // Default mode pauses for a UI click on Write/Edit/Bash and on any
@@ -63,13 +74,33 @@ app.post('/api/config', (req, res) => {
   res.json(writeConfig({ githubToken }));
 });
 
+app.get('/api/projects', (_req, res) => {
+  const projects = listProjects().map((project) => ({ ...project, activeRunId: activeRunIdFor(project.id) }));
+  res.json(projects);
+});
+
+// Starts a run. Either `target` (new project — a fresh clone/create) or
+// `projectId` (continue an existing project against its already-known
+// repo, no need to re-enter a URL) must be given, not both.
 app.post('/api/runs', async (req, res) => {
-  const { brief, target, autonomous } = req.body ?? {};
+  const { brief, target, projectId, autonomous } = req.body ?? {};
   if (!brief || typeof brief !== 'string') {
     return res.status(400).json({ error: 'brief is required' });
   }
-  if (!target || (target.mode !== 'clone' && target.mode !== 'create')) {
-    return res.status(400).json({ error: 'target.mode must be "clone" or "create"' });
+
+  let project;
+  if (projectId) {
+    project = getProject(projectId);
+    if (!project) return res.status(404).json({ error: `no project with id ${projectId}` });
+    if (activeRunIdFor(projectId)) {
+      return res.status(409).json({ error: 'this project already has a run in progress' });
+    }
+  } else {
+    if (!target || (target.mode !== 'clone' && target.mode !== 'create')) {
+      return res.status(400).json({ error: 'target.mode must be "clone" or "create" (or pass projectId to continue an existing project)' });
+    }
+    const name = target.mode === 'clone' ? target.repoUrl : target.name;
+    project = createProject({ name, target, repo: null });
   }
 
   const { githubToken } = readConfig();
@@ -79,14 +110,16 @@ app.post('/api/runs', async (req, res) => {
 
   const runId = randomUUID();
   const workspaceDir = path.join(workspacesRoot, `${slugify(brief)}-${Date.now()}`);
-  const run = { events: [], listeners: new Set(), pendingApprovals: new Map(), done: false };
+  const run = { projectId: project.id, events: [], listeners: new Set(), pendingApprovals: new Map(), done: false };
   runs.set(runId, run);
-  res.status(202).json({ runId });
+  recordRunStart(project.id, { runId, brief, autonomous: Boolean(autonomous) });
+  res.status(202).json({ runId, projectId: project.id });
 
   (async () => {
     try {
-      emit(run, { type: 'workspace_preparing', target });
-      const repo = await prepareWorkspace({ token: githubToken, target, workspaceDir });
+      emit(run, { type: 'workspace_preparing', target: project.target });
+      const repo = await prepareWorkspace({ token: githubToken, target: project.target, workspaceDir });
+      setProjectRepo(project.id, repo);
       emit(run, { type: 'workspace_ready', repo });
 
       const requestApproval = makeRequestApproval(run, Boolean(autonomous));
@@ -104,9 +137,11 @@ app.post('/api/runs', async (req, res) => {
         message: `AITeam: ${brief.slice(0, 72)}`,
       });
       emit(run, { type: 'finished', repo, push: pushResult, summary: result.text });
+      recordRunFinish(project.id, runId, { status: 'finished', summary: result.text });
     } catch (error) {
       const aborted = error instanceof RunAbortedError;
       emit(run, { type: 'error', aborted, message: error.message });
+      recordRunFinish(project.id, runId, { status: aborted ? 'aborted' : 'error', error: error.message });
     } finally {
       finish(run);
     }

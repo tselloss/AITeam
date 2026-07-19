@@ -2,7 +2,7 @@
 
 **An AI company, built as a team of Claude Code subagents.**
 
-Thirteen employees. Zero salaries. Zero HR complaints. Zero snack budget disputes.
+Fifteen employees. Zero salaries. Zero HR complaints. Zero snack budget disputes.
 Each role is a subagent definition in [`.claude/agents/`](.claude/agents/): a scoped
 set of tools, a model tier matched to how much damage the role could do if it went
 rogue, and a system prompt that says what it owns, what it hands off, and what it must
@@ -19,6 +19,7 @@ still has to pay for tokens.
 | CTO | `cto` | opus | Architecture decisions, tech strategy, ADRs nobody reads |
 | CPO | `cpo` | opus | Roadmaps that change every sprint |
 | CFO | `cfo` | sonnet | Saying "no" to paid services, professionally |
+| Business Analyst | `business-analyst` | sonnet | Turning "it depends" into actual requirements |
 | Product Owner | `product-owner` | sonnet | Turning vibes into acceptance criteria |
 | Dev Lead | `dev-lead` | sonnet | Splitting work up, reviewing it, judging you for it |
 | Developer | `dev` | sonnet | Actually writing the code (novel concept) |
@@ -28,6 +29,7 @@ still has to pay for tokens.
 | Designer | `designer` | sonnet | Pixels, tokens, and gentle rage at engineering |
 | Support Engineer | `support-engineer` | haiku | Reading the same bug report five times |
 | Technical Writer | `tech-writer` | sonnet | Documenting features before everyone forgets they exist |
+| Documentation Engineer | `docs-engineer` | sonnet | Keeping the architecture docs from lying to you |
 
 A "team" is one definition invoked as many times as there are parallel tasks — three
 `Agent` calls to `dev` is three developers, not three files. Yes, this means the
@@ -38,7 +40,9 @@ company can hire an infinite number of developers instantly and still ship late.
 ```mermaid
 flowchart LR
     H[Human / ceo] --> CPO[cpo]
+    CPO --> BA[business-analyst]
     CPO --> PO[product-owner]
+    BA --> PO
     PO --> DES[designer]
     DES --> DL[dev-lead]
     PO --> DL
@@ -47,8 +51,14 @@ flowchart LR
     QA -->|pass| DL
     QA -->|defect| DEV
     DL --> OPS[devops-engineer]
+    DL --> DE[docs-engineer]
     OPS --> TW[tech-writer]
 ```
+
+`cpo` routes to `business-analyst` only for initiatives with genuinely unclear
+requirements — narrow, well-understood asks go straight to `product-owner`.
+`docs-engineer` picks up architecturally-significant merges to keep the codebase's
+own docs honest; it doesn't gate the release the way `qa-engineer` does.
 
 Support tickets enter through `support-engineer` and route to `dev-lead` (defect),
 `product-owner` (feature request), `tech-writer` (doc gap), or get escalated through
@@ -99,10 +109,11 @@ so per-repo overrides just work.
 ### A separate, optional path: outside Claude Code entirely
 
 There's also a local web UI for running the team from a browser with no Claude Code
-session at all — but it's billed against your own metered Anthropic API key, not
-your subscription, so it's a different tool for a different situation (e.g.
-kicking off a project from a machine without Claude Code installed), not something
-you need for everyday use:
+session at all — still billed against your Claude subscription (it shells out to
+whatever `claude login` session is active on the machine, via the Claude Agent SDK),
+just from a browser tab instead of an editor. Useful for kicking off or continuing a
+project without opening Claude Code, or for tracking several projects at once from
+one dashboard:
 
 ```sh
 npm install && npm start   # http://localhost:8877
@@ -118,7 +129,7 @@ node --test
 ## Structure
 
 ```
-.claude/agents/   the 13 role definitions (the entire payroll)
+.claude/agents/   the 15 role definitions (the entire payroll)
 .claude-plugin/   plugin.json + a self-referencing marketplace.json
 agents/           generated plugin copies of .claude/agents/*.md (npm run build:plugin)
 docs/
