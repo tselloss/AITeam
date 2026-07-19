@@ -25,4 +25,4 @@ Nobody by default — documentation is typically an end state; if you find shipp
 
 ## Output format
 
-Docs written or updated, a short summary of what changed and why, plus a `HANDOFF` block (or an explicit statement that no handoff is needed).
+Docs written or updated, a short summary of what changed and why, plus a `HANDOFF` block naming the next role — or, since documentation is typically an end state, omit the block entirely per the dead-end exception in `${CLAUDE_PLUGIN_ROOT}/docs/team-protocol.md` § Mechanics.

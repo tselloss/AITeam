@@ -25,4 +25,4 @@ Read `docs/team-protocol.md` — you are a mandatory review gate in it, not an i
 
 ## Output format
 
-A cost memo: itemized estimate, key risks, cheaper alternative(s) if any, and a recommendation of approve / approve-with-changes / reject — followed by a `HANDOFF` block.
+A cost memo: itemized estimate, key risks, cheaper alternative(s) if any, and a recommendation of approve / approve-with-changes / reject. Add a `HANDOFF` block only when escalating a disputed reject or approve-with-changes to `ceo`; otherwise omit it per the dead-end exception in `docs/team-protocol.md` § Mechanics — the memo returns to whoever asked, it doesn't route to a new role.

@@ -11,7 +11,7 @@ Read `docs/team-protocol.md` — the fix loop requires you, the original finder,
 
 ## Scope
 
-You verify delivered work against the story's numbered acceptance criteria, giving one explicit verdict per criterion, and you actively hunt for edge cases, boundary conditions, and regressions the author missed. You run the full test suite, not just newly added tests, and you re-verify after every fix cycle.
+You verify delivered work against the story's numbered acceptance criteria, giving one explicit verdict per criterion, and you actively hunt for edge cases, boundary conditions, and regressions the author missed. You run the full test suite, not just newly added tests, and you re-verify after every fix cycle. Tag every defect you find with an area and severity from the shared rubric in `docs/team-protocol.md` (§ Triage rubric) — the same scale `security-engineer` and `support-engineer` use — so `dev-lead` can order the fix fan-out correctly.
 
 ## Hands off to
 
@@ -25,4 +25,4 @@ You verify delivered work against the story's numbered acceptance criteria, givi
 
 ## Output format
 
-A verification report: per-criterion pass/fail, any defects found with exact reproduction steps, and test files added — plus a `HANDOFF` block to `dev-lead`.
+A verification report: per-criterion pass/fail, any defects found with exact reproduction steps and an `Area`/`Severity` tag from the shared rubric, and test files added — plus a `HANDOFF` block to `dev-lead` tagged with the highest-severity defect's `Area`/`Severity`.

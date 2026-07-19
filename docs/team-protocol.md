@@ -43,9 +43,10 @@ own author.
 ## Triage rubric
 
 Every triage/routing/priority decision — `support-engineer` classifying an issue,
-`security-engineer` rating a finding, `product-owner` setting backlog priority,
-`dev-lead` ordering fan-out, `ceo` arbitrating or escalating — uses this shared
-area + severity rubric instead of a per-role scale invented on the spot.
+`security-engineer` rating a finding, `qa-engineer` rating a defect it finds,
+`product-owner` setting backlog priority, `dev-lead` ordering fan-out, `ceo`
+arbitrating or escalating — uses this shared area + severity rubric instead of a
+per-role scale invented on the spot.
 
 ### Work areas
 
@@ -67,9 +68,9 @@ highest-risk one (e.g. an auth change touching the UI is `security`, not `fronte
   queue priority.
 - `low` — cosmetic, rare edge case, or a minor doc gap. Lowest queue priority.
 
-This is the same scale `security-engineer` already rates findings on; `support-engineer`
-now assigns it on every triage, and `product-owner` uses it as backlog priority — one
-scale, three consumers, no incompatible variants.
+This is the same scale `security-engineer` and `qa-engineer` rate findings/defects on;
+`support-engineer` assigns it on every triage, and `product-owner` uses it as backlog
+priority — one scale, four consumers, no incompatible variants.
 
 ### Routing + urgency
 
@@ -92,7 +93,10 @@ scale, three consumers, no incompatible variants.
 - **CFO gate**: any choice introducing paid services, infrastructure spend, or
   model-tier cost goes to `cfo` before adoption.
 - **Security gate**: `dev-lead` routes auth/crypto/dependency/input-handling changes
-  to `security-engineer` before approval; critical/high findings block release.
+  to `security-engineer` before approving that story; critical/high findings block
+  release. Independent of what was flagged during development, `security-engineer`
+  also performs a mandatory audit before `devops-engineer` cuts any release — a
+  release with nothing flagged is not exempt.
 - **QA gate**: no story is done until `qa-engineer` passes every acceptance criterion.
 
 ## Definition of done
@@ -140,14 +144,26 @@ acknowledges it — see `app/server/orchestrator.js`.
 
 - Every agent reply ends with a `HANDOFF` block:
   `HANDOFF → <agent-name>: <what they must do> | Area: <work area> | Severity: <level> | Inputs: <files/context>`
-  `Area` and `Severity` are optional — omit either when a role isn't triaging against
-  the rubric (e.g. `dev` finishing an implementation task) — but when present, use the
-  exact tokens from § Triage rubric so routing stays machine-parseable. Canonical field
-  order is Area, then Severity, then Inputs; the parser accepts any order, but keep the
-  canonical order when writing one for readability.
+  — except when a role's output is a genuine dead end with no further owner (e.g.
+  `tech-writer` with nothing left to route, `cfo` returning a memo to whoever asked
+  rather than escalating a dispute), in which case the reply omits the block entirely
+  rather than inventing a placeholder target. `Area` and `Severity` are optional — omit
+  either when a role isn't triaging against the rubric (e.g. `dev` finishing an
+  implementation task) — but when present, use the exact tokens from § Triage rubric so
+  routing stays machine-parseable. Canonical field order is Area, then Severity, then
+  Inputs; the parser accepts any order, but keep the canonical order when writing one
+  for readability.
 - Only `ceo` and `dev-lead` hold the `Agent` tool and actually execute handoffs by
   invoking the named agent. Every other role's handoff is a recommendation that
   returns to its caller for execution.
+- A role without the `Agent` tool (`cto`, `cpo`, and every other non-`ceo`/`dev-lead`
+  role) cannot consult another role synchronously mid-turn. When its guardrails say to
+  "consult" or "route before finalizing," that means: produce the artifact, end the
+  reply with a `HANDOFF` to the reviewing role, and treat the artifact as provisional
+  until the caller (`ceo` or `dev-lead`) invokes that review and a clear result comes
+  back. A reject or approve-with-changes sends the caller back to re-invoke the
+  original role with revisions — it never gets silently treated as final in the
+  meantime.
 - Shared artifacts are the interface between roles, not conversational memory:
   - `docs/decisions/` — CEO decision memos and CTO ADRs
   - `docs/product/roadmap.md` — CPO roadmap
