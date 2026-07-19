@@ -87,28 +87,33 @@ An optional, off-by-default eval tier that would exercise real agent behavior vi
 
 Everyday use is the plugin path above — install once, then just ask, inside a normal
 Claude Code session, on your existing subscription. `app/` is a *different*, optional
-path: a small local web app that runs the same roster standalone, billed against your
-own metered Anthropic API key instead of your Claude subscription, and pushes the
-result to a GitHub repo — for when you want to kick off a project from a browser
-without opening Claude Code at all. It reuses `.claude/agents/*.md` as the only source
-of truth for each role's prompt, tools, and model; nothing about the roster is
-duplicated. Skip this section entirely if you're just using the plugin.
+path: a small local web app that runs the same roster standalone from a browser,
+without opening Claude Code at all, and pushes the result to a GitHub repo. It still
+bills against your Claude subscription, not a metered API key — runs go through the
+Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`), which shells out to whichever
+`claude` CLI session is already logged in on this machine (`claude login`), the same
+credential the VS Code extension/CLI/desktop app use. It reuses `.claude/agents/*.md`
+as the only source of truth for each role's prompt, tools, and model; nothing about
+the roster is duplicated. Skip this section entirely if you're just using the plugin.
 
 ```sh
 npm install
 npm start          # http://localhost:8877 (override with PORT=...)
 ```
 
-Paste an Anthropic API key and a GitHub personal access token (repo scope)
-into Settings, describe a project, pick a target repo (create new or clone
-existing), and run. `Write`/`Edit`/`Bash` calls pause for your approval in
-the UI before they touch disk; every path is sandboxed to that run's
-directory under `app/workspaces/` (gitignored). See
-`C:\Users\karac\.claude\plans\floating-rolling-seal.md` for the full design
-if you need the reasoning behind it — the short version is `app/server/agents.js`
-loads a role, `orchestrator.js` runs it through the Claude API's Tool Runner,
-and `ceo`'s own `Agent` tool calls (per its autonomy instructions) are what
-actually chain the pipeline from role to role.
+No Anthropic API key to paste — just make sure `claude login` has been run at least
+once on this machine. Paste a GitHub personal access token (repo scope) into
+Settings, describe a project, pick a target repo (create new or clone existing), and
+run. `Write`/`Edit`/`Bash` calls pause for your approval in the UI before they touch
+disk; every path is sandboxed to that run's directory under `app/workspaces/`
+(gitignored) via a `canUseTool` permission gate in `orchestrator.js`. See
+`C:\Users\karac\.claude\plans\floating-rolling-seal.md` for the original (API-key-based)
+design rationale — the short version still holds: `app/server/agents.js` loads a role
+and `orchestrator.js` runs it, one Agent SDK `query()` call per role invocation; only
+`ceo` and `dev-lead` are granted a custom `delegate` MCP tool (an in-process
+`createSdkMcpServer`), and calling it recurses into the next role and returns its
+final reply — that recursion is what chains the pipeline from role to role, mirroring
+the plugin path's real `Agent` tool.
 
 ## Structure
 
@@ -131,7 +136,7 @@ docs/
 tests/
   agents.test.mjs       offline structural + policy tests
   plugin.test.mjs       offline plugin manifest + agents/ sync tests
-  tool-runtime.test.mjs offline sandbox-escape tests for the local runner
+  tool-runtime.test.mjs offline sandbox-boundary tests for the runner's canUseTool gate
   handoff.test.mjs      offline HANDOFF-line parser tests
 ```
 

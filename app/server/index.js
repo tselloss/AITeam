@@ -34,17 +34,37 @@ function slugify(text) {
   return slug || 'project';
 }
 
+// Default mode pauses for a UI click on Write/Edit/Bash and on any
+// critical-severity handoff (see docs/team-protocol.md § Autonomous
+// execution). Autonomous mode skips every pause so a run can be left
+// unattended end to end — including critical-severity items, which is a
+// deliberate tradeoff the run creator opts into per run, not a default.
+function makeRequestApproval(run, autonomous) {
+  if (!autonomous) {
+    return (role, toolName, input) =>
+      new Promise((resolve) => {
+        const approvalId = randomUUID();
+        run.pendingApprovals.set(approvalId, resolve);
+        emit(run, { type: 'approval_requested', approvalId, role, toolName, input });
+      });
+  }
+  return async (role, toolName, input) => {
+    emit(run, { type: 'auto_approved', role, toolName, input });
+    return { approved: true, reason: 'autonomous mode' };
+  };
+}
+
 app.get('/api/config', (_req, res) => {
   res.json(hasConfig());
 });
 
 app.post('/api/config', (req, res) => {
-  const { anthropicApiKey, githubToken } = req.body ?? {};
-  res.json(writeConfig({ anthropicApiKey, githubToken }));
+  const { githubToken } = req.body ?? {};
+  res.json(writeConfig({ githubToken }));
 });
 
 app.post('/api/runs', async (req, res) => {
-  const { brief, target } = req.body ?? {};
+  const { brief, target, autonomous } = req.body ?? {};
   if (!brief || typeof brief !== 'string') {
     return res.status(400).json({ error: 'brief is required' });
   }
@@ -52,9 +72,9 @@ app.post('/api/runs', async (req, res) => {
     return res.status(400).json({ error: 'target.mode must be "clone" or "create"' });
   }
 
-  const { anthropicApiKey, githubToken } = readConfig();
-  if (!anthropicApiKey || !githubToken) {
-    return res.status(400).json({ error: 'save your Anthropic API key and GitHub token in Settings first' });
+  const { githubToken } = readConfig();
+  if (!githubToken) {
+    return res.status(400).json({ error: 'save your GitHub token in Settings first' });
   }
 
   const runId = randomUUID();
@@ -69,15 +89,9 @@ app.post('/api/runs', async (req, res) => {
       const repo = await prepareWorkspace({ token: githubToken, target, workspaceDir });
       emit(run, { type: 'workspace_ready', repo });
 
-      const requestApproval = (role, toolName, input) =>
-        new Promise((resolve) => {
-          const approvalId = randomUUID();
-          run.pendingApprovals.set(approvalId, resolve);
-          emit(run, { type: 'approval_requested', approvalId, role, toolName, input });
-        });
+      const requestApproval = makeRequestApproval(run, Boolean(autonomous));
 
       const result = await runProject({
-        apiKey: anthropicApiKey,
         workspaceDir,
         brief,
         onEvent: (event) => emit(run, event),

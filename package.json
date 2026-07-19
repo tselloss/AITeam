@@ -10,7 +10,10 @@
     "build:plugin": "node scripts/build-plugin.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest",
     "@anthropic-ai/sdk": "latest",
-    "express": "latest"
+    "@modelcontextprotocol/sdk": "latest",
+    "express": "latest",
+    "zod": "^4.0.0"
   }
 }

@@ -189,13 +189,11 @@
 </head>
 <body>
   <h1>AITeam Runner 🤖💼</h1>
-  <p>Runs the <a href="https://github.com/tselloss/AITeam">AITeam</a> roster against your own Anthropic API key and pushes the result to GitHub. Thirteen tireless employees, one very tired credit card.</p>
+  <p>Runs the <a href="https://github.com/tselloss/AITeam">AITeam</a> roster on your own Claude subscription — via the Claude Agent SDK, reusing whatever <code>claude login</code> session is active on this machine — and pushes the result to GitHub. Thirteen tireless employees, zero extra API bill.</p>
 
   <section id="settings">
     <h2>Settings <small>(the "please don't leak my keys" section)</small></h2>
-    <label>Anthropic API key <small>— the fuel this whole org runs on</small>
-      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off" />
-    </label>
+    <p style="opacity: 0.75; font-size: 0.9rem; margin-top: 0;">No Anthropic API key needed — runs authenticate as whichever account is logged into Claude Code on this machine. Not logged in? Run <code>claude login</code> in a terminal first.</p>
     <label>GitHub personal access token (repo scope) <small>— so the interns can push code somewhere</small>
       <input type="password" id="githubToken" placeholder="ghp_..." autocomplete="off" />
     </label>
@@ -216,6 +214,7 @@
       <label><input type="radio" name="targetMode" value="clone" /> Use an existing repo (inherit someone else's mess)</label>
       <input type="text" id="repoUrl" placeholder="https://github.com/owner/repo" />
     </fieldset>
+    <label><input type="checkbox" id="autonomousMode" /> Autonomous mode <small>— never pause for my approval, including critical-severity findings; just use your best judgment and keep going. Also survives usage-limit pauses on its own (see the log).</small></label>
     <button id="runButton">🚀 Assemble the Team</button>
   </section>
 
@@ -230,20 +229,17 @@
   async function loadSettingsStatus() {
     const res = await fetch('/api/config');
     const data = await res.json();
-    settingsStatus.textContent =
-      `API key: ${data.hasAnthropicApiKey ? 'saved' : 'not set'} · GitHub token: ${data.hasGithubToken ? 'saved' : 'not set'}`;
+    settingsStatus.textContent = `GitHub token: ${data.hasGithubToken ? 'saved' : 'not set'}`;
   }
   loadSettingsStatus();
 
   document.getElementById('saveSettings').addEventListener('click', async () => {
-    const anthropicApiKey = document.getElementById('apiKey').value;
     const githubToken = document.getElementById('githubToken').value;
     await fetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ anthropicApiKey, githubToken }),
+      body: JSON.stringify({ githubToken }),
     });
-    document.getElementById('apiKey').value = '';
     document.getElementById('githubToken').value = '';
     await loadSettingsStatus();
   });
@@ -413,6 +409,11 @@
       case 'role_start':
         logLine('role', `${roleIcon(event.role)} ▶ ${event.role} clocks in: ${event.task}`);
         break;
+      case 'auth': {
+        const source = event.apiKeySource === 'oauth' ? 'your Claude subscription (Claude Code login)' : event.apiKeySource;
+        logLine('info', `🔑 ${event.role} authenticated via ${source} — model ${event.model}`);
+        break;
+      }
       case 'text':
         logMarkdownCard(event.role, event.text);
         break;
@@ -433,6 +434,21 @@
         if (card) card.classList.add('resolved');
         break;
       }
+      case 'auto_approved':
+        logLine('info', `🤖 ${event.role} auto-approved its own ${event.toolName} call (autonomous mode) — no one home to ask`);
+        break;
+      case 'rate_limited': {
+        const when = new Date(event.resumeAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+        const why = event.rateLimitType ? `usage limit (${event.rateLimitType})` : `a transient error (${event.reason})`;
+        logLine('warning', `⏸ ${event.role} paused — hit ${why}. Will resume automatically around ${when}, no action needed.`);
+        break;
+      }
+      case 'resumed':
+        logLine('info', `▶ ${event.role} resumed — capacity is back, continuing where it left off.`);
+        break;
+      case 'rate_limit_warning':
+        logLine('warning', `⚠ ${event.role} is approaching a usage limit (${event.rateLimitType}${event.utilization != null ? `, ${event.utilization}% used` : ''})`);
+        break;
       case 'warning':
         logLine('warning', `⚠ [${event.role}] ${event.text}`);
         break;
@@ -459,10 +475,11 @@
     logOutput.innerHTML = '';
     document.getElementById('runButton').disabled = true;
 
+    const autonomous = document.getElementById('autonomousMode').checked;
     const res = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ brief, target }),
+      body: JSON.stringify({ brief, target, autonomous }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));

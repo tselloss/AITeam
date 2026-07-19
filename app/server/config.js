@@ -19,27 +19,24 @@ function parse(text) {
 
 // This file is gitignored (see .gitignore) and never rendered back to the
 // UI — the settings form only ever writes to it, never reads a value out.
+// There is no Anthropic API key here: runs authenticate via the Claude Agent
+// SDK, which shells out to the same `claude` CLI session already logged in
+// on this machine (subscription billing) — see orchestrator.js.
 export function readConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) return { anthropicApiKey: '', githubToken: '' };
+  if (!fs.existsSync(CONFIG_PATH)) return { githubToken: '' };
   const values = parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-  return {
-    anthropicApiKey: values.ANTHROPIC_API_KEY ?? '',
-    githubToken: values.GITHUB_TOKEN ?? '',
-  };
+  return { githubToken: values.GITHUB_TOKEN ?? '' };
 }
 
-export function writeConfig({ anthropicApiKey, githubToken }) {
+export function writeConfig({ githubToken }) {
   const current = readConfig();
-  const next = {
-    anthropicApiKey: anthropicApiKey || current.anthropicApiKey,
-    githubToken: githubToken || current.githubToken,
-  };
-  const contents = `ANTHROPIC_API_KEY=${next.anthropicApiKey}\nGITHUB_TOKEN=${next.githubToken}\n`;
+  const next = { githubToken: githubToken || current.githubToken };
+  const contents = `GITHUB_TOKEN=${next.githubToken}\n`;
   fs.writeFileSync(CONFIG_PATH, contents, { encoding: 'utf8', mode: 0o600 });
-  return { hasAnthropicApiKey: Boolean(next.anthropicApiKey), hasGithubToken: Boolean(next.githubToken) };
+  return { hasGithubToken: Boolean(next.githubToken) };
 }
 
 export function hasConfig() {
-  const { anthropicApiKey, githubToken } = readConfig();
-  return { hasAnthropicApiKey: Boolean(anthropicApiKey), hasGithubToken: Boolean(githubToken) };
+  const { githubToken } = readConfig();
+  return { hasGithubToken: Boolean(githubToken) };
 }
