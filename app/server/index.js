@@ -4,15 +4,29 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readConfig, writeConfig, hasConfig } from './config.js';
 import { runProject, RunAbortedError } from './orchestrator.js';
-import { prepareWorkspace, commitAndPush, listUserRepos, listBranches } from './github.js';
+import { prepareWorkspace, commitAndPush, listUserRepos, listBranches, redactToken } from './github.js';
 import { listProjects, getProject, createProject, setProjectRepo, recordRunStart, recordRunFinish } from './projects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.join(__dirname, '..');
 const workspacesRoot = path.join(appRoot, 'workspaces');
 
+const port = process.env.PORT || 8877;
+const selfOrigins = new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
+
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+// Content-Type sniffing alone isn't a real CSRF defense (it doesn't stop a
+// bare script/curl, only browser cross-origin fetches) — reject any request
+// carrying an Origin header that isn't this server itself. Requests with no
+// Origin (curl, same-tab navigation) are left alone.
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && !selfOrigins.has(origin)) {
+    return res.status(403).json({ error: 'cross-origin requests are not allowed' });
+  }
+  next();
+});
 app.use(express.static(path.join(appRoot, 'public')));
 
 /** @type {Map<string, {projectId: string, events: object[], listeners: Set<import('express').Response>, pendingApprovals: Map<string, (decision: {approved: boolean, reason?: string}) => void>, done: boolean}>} */
@@ -82,7 +96,7 @@ app.get('/api/github/repos', async (_req, res) => {
   try {
     res.json(await listUserRepos({ token: githubToken }));
   } catch (error) {
-    res.status(502).json({ error: error.message });
+    res.status(502).json({ error: redactToken(error.message, githubToken) });
   }
 });
 
@@ -94,7 +108,7 @@ app.get('/api/github/repos/:owner/:repo/branches', async (req, res) => {
   try {
     res.json(await listBranches({ token: githubToken, owner: req.params.owner, repo: req.params.repo }));
   } catch (error) {
-    res.status(502).json({ error: error.message });
+    res.status(502).json({ error: redactToken(error.message, githubToken) });
   }
 });
 
@@ -164,8 +178,9 @@ app.post('/api/runs', async (req, res) => {
       recordRunFinish(project.id, runId, { status: 'finished', summary: result.text });
     } catch (error) {
       const aborted = error instanceof RunAbortedError;
-      emit(run, { type: 'error', aborted, message: error.message });
-      recordRunFinish(project.id, runId, { status: aborted ? 'aborted' : 'error', error: error.message });
+      const message = redactToken(error.message, githubToken);
+      emit(run, { type: 'error', aborted, message });
+      recordRunFinish(project.id, runId, { status: aborted ? 'aborted' : 'error', error: message });
     } finally {
       finish(run);
     }
@@ -202,8 +217,10 @@ app.post('/api/runs/:id/approve', (req, res) => {
   res.status(204).end();
 });
 
-const port = process.env.PORT || 8877;
-const server = app.listen(port, () => {
+// Bind explicitly to loopback — the UI has no auth beyond same-origin
+// checking, so accepting connections on other interfaces would let anyone
+// on the same network reach every /api/* route, GitHub token included.
+const server = app.listen(port, '127.0.0.1', () => {
   console.log(`AITeam runner listening on http://localhost:${port}`);
 });
 server.on('error', (error) => {

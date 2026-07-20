@@ -23,7 +23,12 @@ function readAll() {
 }
 
 function writeAll(projects) {
-  fs.writeFileSync(PROJECTS_PATH, JSON.stringify(projects, null, 2), 'utf8');
+  // `mode` on writeFileSync only applies when the file doesn't exist yet, so
+  // chmod explicitly too — otherwise a projects.json left over from before
+  // this file held run errors (which can contain a leaked secret, see
+  // recordRunFinish) stays world-readable forever.
+  fs.writeFileSync(PROJECTS_PATH, JSON.stringify(projects, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.chmodSync(PROJECTS_PATH, 0o600);
 }
 
 export function listProjects() {

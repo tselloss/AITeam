@@ -16,6 +16,16 @@ function authenticatedUrl(owner, repo, token) {
   return `https://${encodeURIComponent(token)}@github.com/${owner}/${repo}.git`;
 }
 
+// git subprocess calls pass the token embedded in the remote URL as an argv
+// element, so a non-zero exit makes execFileSync echo the whole command line
+// — token included — into error.message. Callers must scrub any error that
+// may have come out of this module before it's ever emitted over SSE or
+// persisted, since both are otherwise-unauthenticated/world-readable sinks.
+export function redactToken(message, token) {
+  if (!token || typeof message !== 'string') return message;
+  return message.split(token).join('***REDACTED***').split(encodeURIComponent(token)).join('***REDACTED***');
+}
+
 // Lists repos the token's owner can push to (own + collaborator + org),
 // newest-activity first, so the UI can offer a picker instead of a URL field.
 // Capped at 3 pages (300 repos) — plenty for an interactive dropdown.
@@ -92,12 +102,17 @@ function setupClone({ token, repoUrl, branch, workspaceDir }) {
   fs.mkdirSync(path.dirname(workspaceDir), { recursive: true });
   const cloneArgs = ['clone', ...(branch ? ['--branch', branch] : []), authenticatedUrl(owner, repo, token), workspaceDir];
   git(cloneArgs, path.dirname(workspaceDir));
+  // .git/config keeps the token embedded in the remote URL — block other
+  // local accounts from traversing into the workspace at all so they can't
+  // read it back out, since git itself has no "hide this from ps/config" mode.
+  fs.chmodSync(workspaceDir, 0o700);
   const checkedOutBranch = git(['branch', '--show-current'], workspaceDir) || branch || 'main';
   return { owner, repo, branch: checkedOutBranch, htmlUrl: `https://github.com/${owner}/${repo}` };
 }
 
 function setupNewRepo({ token, owner, repo, workspaceDir }) {
-  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.mkdirSync(workspaceDir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(workspaceDir, 0o700);
   git(['init'], workspaceDir);
   git(['symbolic-ref', 'HEAD', 'refs/heads/main'], workspaceDir);
   git(['remote', 'add', 'origin', authenticatedUrl(owner, repo, token)], workspaceDir);
