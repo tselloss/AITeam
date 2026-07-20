@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readConfig, writeConfig, hasConfig } from './config.js';
 import { runProject, RunAbortedError } from './orchestrator.js';
-import { prepareWorkspace, commitAndPush, listUserRepos, listBranches, redactToken } from './github.js';
+import { prepareWorkspace, commitAndPush, listUserRepos, listBranches, redactCredentials } from './github.js';
 import { listProjects, getProject, createProject, setProjectRepo, recordRunStart, recordRunFinish } from './projects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -96,7 +96,7 @@ app.get('/api/github/repos', async (_req, res) => {
   try {
     res.json(await listUserRepos({ token: githubToken }));
   } catch (error) {
-    res.status(502).json({ error: redactToken(error.message, githubToken) });
+    res.status(502).json({ error: redactCredentials(error.message) });
   }
 });
 
@@ -108,7 +108,7 @@ app.get('/api/github/repos/:owner/:repo/branches', async (req, res) => {
   try {
     res.json(await listBranches({ token: githubToken, owner: req.params.owner, repo: req.params.repo }));
   } catch (error) {
-    res.status(502).json({ error: redactToken(error.message, githubToken) });
+    res.status(502).json({ error: redactCredentials(error.message) });
   }
 });
 
@@ -173,12 +173,13 @@ app.post('/api/runs', async (req, res) => {
         workspaceDir,
         branch: repo.branch,
         message: `AITeam: ${brief.slice(0, 72)}`,
+        token: githubToken,
       });
       emit(run, { type: 'finished', repo, push: pushResult, summary: result.text });
       recordRunFinish(project.id, runId, { status: 'finished', summary: result.text });
     } catch (error) {
       const aborted = error instanceof RunAbortedError;
-      const message = redactToken(error.message, githubToken);
+      const message = redactCredentials(error.message);
       emit(run, { type: 'error', aborted, message });
       recordRunFinish(project.id, runId, { status: aborted ? 'aborted' : 'error', error: message });
     } finally {

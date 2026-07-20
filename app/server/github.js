@@ -2,28 +2,57 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
+// Strips embedded credentials from any https://<token>@host URL — git
+// itself echoes the authenticated remote URL back into some of its own
+// fatal: messages (e.g. on an auth failure), so this has to run on stderr
+// too, not just on how we invoke the command.
+export function redactCredentials(text) {
+  return text.replace(/https:\/\/[^@/\s]+@/g, 'https://');
+}
+
 function git(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  try {
+    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch (error) {
+    // Prefer the child's own stderr over error.message: message includes
+    // the full invoked command line (args and all), which is exactly where
+    // a token passed via authHeaderArg(...) would otherwise leak into logs
+    // and the run UI.
+    const detail = (error.stderr || error.message || '').toString().trim();
+    throw new Error(redactCredentials(detail));
+  }
 }
 
-function parseOwnerRepo(repoUrl) {
-  const match = /github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/.exec(repoUrl.trim());
-  if (!match) throw new Error(`could not parse a GitHub owner/repo from: ${repoUrl}`);
-  return { owner: match[1], repo: match[2] };
+// Accepts anything a user would plausibly paste: a bare clone URL
+// (https://github.com/owner/repo[.git], with or without a trailing slash),
+// an SSH remote (git@github.com:owner/repo.git), or a browser URL copied
+// while looking at a specific branch (.../owner/repo/tree/<branch>, the
+// shape GitHub's own UI puts in the address bar) — the last of which also
+// yields a branch to check out after cloning.
+export function parseOwnerRepo(repoUrl) {
+  const afterHost = /github\.com[/:](.+)$/.exec(repoUrl.trim());
+  if (!afterHost) throw new Error(`could not parse a GitHub owner/repo from: ${repoUrl}`);
+  const segments = afterHost[1].replace(/\/+$/, '').split('/');
+  const [owner, repoRaw, refType, ...refRest] = segments;
+  if (!owner || !repoRaw) throw new Error(`could not parse a GitHub owner/repo from: ${repoUrl}`);
+  const repo = repoRaw.replace(/\.git$/, '');
+  const branch = (refType === 'tree' || refType === 'blob') && refRest.length > 0 ? refRest.join('/') : undefined;
+  return { owner, repo, branch };
 }
 
-function authenticatedUrl(owner, repo, token) {
-  return `https://${encodeURIComponent(token)}@github.com/${owner}/${repo}.git`;
+function remoteUrl(owner, repo) {
+  return `https://github.com/${owner}/${repo}.git`;
 }
 
-// git subprocess calls pass the token embedded in the remote URL as an argv
-// element, so a non-zero exit makes execFileSync echo the whole command line
-// — token included — into error.message. Callers must scrub any error that
-// may have come out of this module before it's ever emitted over SSE or
-// persisted, since both are otherwise-unauthenticated/world-readable sinks.
-export function redactToken(message, token) {
-  if (!token || typeof message !== 'string') return message;
-  return message.split(token).join('***REDACTED***').split(encodeURIComponent(token)).join('***REDACTED***');
+// A `-c` override that authenticates a single git invocation without ever
+// putting the token in a URL — which git would otherwise persist verbatim
+// into that repo's .git/config (on disk, indefinitely) the moment it's used
+// in a clone/remote-add. Pass this only to the specific git() calls that
+// talk to the remote (clone, push); the config override lives only for that
+// one process, never written to disk.
+export function authHeaderArg(token) {
+  const basic = Buffer.from(`${token}:x-oauth-basic`).toString('base64');
+  return `http.extraHeader=Authorization: Basic ${basic}`;
 }
 
 // Lists repos the token's owner can push to (own + collaborator + org),
@@ -97,25 +126,28 @@ async function createRepo({ token, name, isPrivate }) {
   return { owner: data.owner.login, repo: data.name, htmlUrl: data.html_url };
 }
 
+// `branch` (explicit — e.g. from the UI's branch dropdown) wins over any
+// branch parsed out of a pasted /tree/<branch> URL; either way we clone
+// first (fetches every remote-tracking branch) and check out the requested
+// one after, rather than a --branch clone, so both sources share one path.
 function setupClone({ token, repoUrl, branch, workspaceDir }) {
-  const { owner, repo } = parseOwnerRepo(repoUrl);
+  const { owner, repo, branch: urlBranch } = parseOwnerRepo(repoUrl);
+  const requestedBranch = branch || urlBranch;
   fs.mkdirSync(path.dirname(workspaceDir), { recursive: true });
-  const cloneArgs = ['clone', ...(branch ? ['--branch', branch] : []), authenticatedUrl(owner, repo, token), workspaceDir];
-  git(cloneArgs, path.dirname(workspaceDir));
-  // .git/config keeps the token embedded in the remote URL — block other
-  // local accounts from traversing into the workspace at all so they can't
-  // read it back out, since git itself has no "hide this from ps/config" mode.
+  git(['-c', authHeaderArg(token), 'clone', remoteUrl(owner, repo), workspaceDir], path.dirname(workspaceDir));
+  if (requestedBranch) git(['checkout', requestedBranch], workspaceDir);
+  // The workspace can hold proprietary source before it's ever pushed —
+  // block other local accounts from traversing into it at all.
   fs.chmodSync(workspaceDir, 0o700);
-  const checkedOutBranch = git(['branch', '--show-current'], workspaceDir) || branch || 'main';
+  const checkedOutBranch = git(['branch', '--show-current'], workspaceDir) || requestedBranch || 'main';
   return { owner, repo, branch: checkedOutBranch, htmlUrl: `https://github.com/${owner}/${repo}` };
 }
 
-function setupNewRepo({ token, owner, repo, workspaceDir }) {
+function setupNewRepo({ owner, repo, workspaceDir }) {
   fs.mkdirSync(workspaceDir, { recursive: true, mode: 0o700 });
-  fs.chmodSync(workspaceDir, 0o700);
   git(['init'], workspaceDir);
   git(['symbolic-ref', 'HEAD', 'refs/heads/main'], workspaceDir);
-  git(['remote', 'add', 'origin', authenticatedUrl(owner, repo, token)], workspaceDir);
+  git(['remote', 'add', 'origin', remoteUrl(owner, repo)], workspaceDir);
   return { owner, repo, branch: 'main', htmlUrl: `https://github.com/${owner}/${repo}` };
 }
 
@@ -128,16 +160,16 @@ export async function prepareWorkspace({ token, target, workspaceDir }) {
   }
   if (target.mode === 'create') {
     const created = await createRepo({ token, name: target.name, isPrivate: target.isPrivate });
-    return setupNewRepo({ token, owner: created.owner, repo: created.repo, workspaceDir });
+    return setupNewRepo({ owner: created.owner, repo: created.repo, workspaceDir });
   }
   throw new Error(`unknown target mode: ${target.mode}`);
 }
 
-export function commitAndPush({ workspaceDir, branch, message }) {
+export function commitAndPush({ workspaceDir, branch, message, token }) {
   git(['add', '-A'], workspaceDir);
   const status = git(['status', '--porcelain'], workspaceDir);
   if (!status) return { pushed: false, reason: 'nothing to commit' };
   git(['-c', 'user.email=aiteam@localhost', '-c', 'user.name=AITeam', 'commit', '-m', message], workspaceDir);
-  git(['push', '-u', 'origin', branch], workspaceDir);
+  git(['-c', authHeaderArg(token), 'push', '-u', 'origin', branch], workspaceDir);
   return { pushed: true };
 }

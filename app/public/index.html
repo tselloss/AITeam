@@ -243,7 +243,7 @@
   <section id="runForm">
     <h2>Start a brand-new project <small>(new hires incoming)</small></h2>
     <label>Project brief <small>— hand it to the CEO like you mean it</small>
-      <textarea id="brief" rows="4" placeholder="Describe what you want built... (be nice, they're doing their best)"></textarea>
+      <textarea id="brief" rows="4" required placeholder="Describe what you want built... (be nice, they're doing their best)"></textarea>
     </label>
     <fieldset>
       <legend>Target repo</legend>
@@ -570,6 +570,7 @@
         case 'error':
           logLine('error', `✖ ${event.message}`);
           summary.textContent = `${label} — ✖ error`;
+          loadProjects();
           break;
         case 'finished':
           logLine('finished', `🎉 Ship it! Pushed to ${event.repo.htmlUrl}${event.push.pushed ? '' : ' (nothing new to commit — everyone was just vibing)'}`);
@@ -651,7 +652,16 @@
     row.className = 'continue-row';
     const textarea = document.createElement('textarea');
     textarea.rows = 2;
+    textarea.required = true;
     textarea.placeholder = "Continue this project — what's next?";
+    // A stopped run (hit a usage-limit safety cap, a non-retryable error, or
+    // was aborted) already has a natural next step: pick up where it left
+    // off. Pre-fill it so resuming is a single click, not a re-typed brief —
+    // the in-run rate-limit pause (orchestrator.js) already resumes itself
+    // without this; this covers the case where the whole run had to stop.
+    if (lastRun && (lastRun.status === 'error' || lastRun.status === 'aborted')) {
+      textarea.value = 'Continue';
+    }
     const side = document.createElement('div');
     side.className = 'side';
     const autoLabel = document.createElement('label');
@@ -670,7 +680,11 @@
 
     button.addEventListener('click', async () => {
       const brief = textarea.value.trim();
-      if (!brief) return;
+      if (!brief) {
+        textarea.focus();
+        textarea.reportValidity();
+        return;
+      }
       button.disabled = true;
       const res = await fetch('/api/runs', {
         method: 'POST',
@@ -705,8 +719,13 @@
   loadProjects();
 
   document.getElementById('runButton').addEventListener('click', async () => {
-    const brief = document.getElementById('brief').value.trim();
-    if (!brief) return;
+    const briefField = document.getElementById('brief');
+    const brief = briefField.value.trim();
+    if (!brief) {
+      briefField.focus();
+      briefField.reportValidity();
+      return;
+    }
 
     const mode = document.querySelector('input[name="targetMode"]:checked').value;
     if (mode === 'clone' && !repoSelect.value) {

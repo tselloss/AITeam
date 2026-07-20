@@ -1,7 +1,8 @@
-import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { query, tool, createSdkMcpServer, USAGE_LIMIT_ERROR_PREFIXES } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import { listAgentFiles, loadAgent } from './agents.js';
 import { resolveInWorkspace, SandboxViolationError } from './tool-runtime.js';
 import { parseHandoff } from './handoff.js';
@@ -77,11 +78,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Sent instead of the original task on a resumed attempt — the resumed
+// session's transcript already has the original task and everything
+// produced before the interruption, so resending `task` would read as a
+// second, duplicate instruction rather than a continuation.
+const RESUME_PROMPT = 'Continue exactly where you left off. Do not restart or repeat work you already completed in this session.';
+
 // `resetsAt` on SDKRateLimitInfo is documented as a number but not which
 // unit; treat anything too small to be a millisecond epoch as seconds.
 function normalizeEpochMs(value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return value > 1e12 ? value : value * 1000;
+}
+
+// The SDK wraps a genuinely-exhausted usage window (not API throttling) as
+// `Error("Claude Code returned an error result: <text>")` when the CLI
+// process ends after its last result message. It carries no machine-readable
+// reset time (just a human string like "resets 5:20pm (Europe/Athens)"), so
+// this only confirms the condition — the caller falls back to the same
+// exponential-backoff polling used for other retryable errors.
+function isUsageLimitError(message) {
+  if (typeof message !== 'string') return false;
+  const prefix = 'Claude Code returned an error result: ';
+  if (!message.startsWith(prefix)) return false;
+  const text = message.slice(prefix.length);
+  return USAGE_LIMIT_ERROR_PREFIXES.some((p) => text.startsWith(p));
 }
 
 export class RunAbortedError extends Error {}
@@ -94,22 +115,6 @@ export class RunAbortedError extends Error {}
 export async function runProject({ workspaceDir, brief, onEvent, requestApproval }) {
   const roster = new Set(listAgentFiles(AGENTS_DIR).map((f) => f.replace(/\.md$/, '')));
   let invocationCount = 0;
-
-  // Only `ceo` and `dev-lead` are granted this tool (see the `tools` filter
-  // in runRole below), mirroring "only ceo and dev-lead hold the Agent tool"
-  // in docs/team-protocol.md. Calling it recurses into runRole and returns
-  // the delegate's final reply as the tool result, exactly like the custom
-  // `Agent` tool the previous API-key-based orchestrator implemented by hand.
-  const delegateTool = tool(
-    'delegate',
-    'Delegate a task to another AITeam role and get back its final reply.',
-    { subagent_type: z.string().describe('the role name, e.g. product-owner'), prompt: z.string() },
-    async ({ subagent_type, prompt }) => {
-      const result = await runRole(subagent_type, prompt);
-      return { content: [{ type: 'text', text: result.text }] };
-    },
-  );
-  const aiteamServer = createSdkMcpServer({ name: 'aiteam', tools: [delegateTool] });
 
   async function runRole(roleName, task) {
     if (!roster.has(roleName)) {
@@ -126,6 +131,37 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
     const sdkTools = agent.tools.filter((t) => t !== 'Agent');
     if (agent.tools.includes('Agent')) sdkTools.push(DELEGATE_TOOL);
 
+    // Only `ceo` and `dev-lead` are granted this tool (see the sdkTools filter
+    // above), mirroring "only ceo and dev-lead hold the Agent tool" in
+    // docs/team-protocol.md. Calling it recurses into runRole and returns the
+    // delegate's final reply as the tool result, exactly like the custom
+    // `Agent` tool the previous API-key-based orchestrator implemented by hand.
+    //
+    // Built fresh per invocation, not shared across the run: runRole recurses
+    // (e.g. ceo delegates to dev-lead, which must itself delegate further,
+    // while ceo's own query() is still suspended awaiting that result), and
+    // the SDK's MCP Server only supports one live transport connection at a
+    // time — connecting the same instance twice throws "Already connected to
+    // a transport... use a separate Protocol instance per connection." A
+    // shared instance meant the outer role's still-open connection silently
+    // broke every nested role's access to this tool.
+    const delegateTool = tool(
+      'delegate',
+      'Delegate a task to another AITeam role and get back its final reply.',
+      { subagent_type: z.string().describe('the role name, e.g. product-owner'), prompt: z.string() },
+      async ({ subagent_type, prompt }) => {
+        const result = await runRole(subagent_type, prompt);
+        return { content: [{ type: 'text', text: result.text }] };
+      },
+    );
+    const aiteamServer = createSdkMcpServer({ name: 'aiteam', tools: [delegateTool] });
+
+    // A stable id for this one role-turn (not the whole run) — assigned to
+    // the first attempt below and resumed on every retry, so a usage-limit
+    // pause or transient error picks the transcript back up instead of
+    // resending `task` and redoing whatever work already happened.
+    const sessionId = randomUUID();
+
     const options = {
       cwd: workspaceDir,
       model: MODEL_FOR_TIER[agent.model],
@@ -133,7 +169,6 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
       tools: sdkTools,
       mcpServers: { aiteam: aiteamServer },
       maxTurns: MAX_TURNS_PER_ROLE,
-      persistSession: false,
       canUseTool: async (toolName, input) => {
         for (const key of PATH_INPUT_KEYS) {
           if (typeof input[key] !== 'string') continue;
@@ -161,46 +196,74 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
       options.effort = EFFORT_FOR_TIER[agent.model];
     }
 
-    // Retries a rate-limited/overloaded/transiently-failed role turn from
-    // scratch after waiting — never fails the run over something that fixes
-    // itself with time. Doesn't count against MAX_ROLE_INVOCATIONS_PER_RUN,
-    // which guards against runaway pipelines, not external throttling.
-    let text;
+    // Retries a rate-limited/overloaded/transiently-failed role turn by
+    // resuming its session after waiting — never fails the run over
+    // something that fixes itself with time. Doesn't count against
+    // MAX_ROLE_INVOCATIONS_PER_RUN, which guards against runaway pipelines,
+    // not external throttling. `text` accumulates *across* attempts (not
+    // reset per attempt) because a resumed attempt only emits the new
+    // continuation content, not the whole reply again.
+    let text = '';
     let resultMessage;
     let backoffMs = BACKOFF_START_MS;
+    let attempt = 0;
     for (;;) {
-      text = '';
       resultMessage = undefined;
       let pendingRateLimit = null;
       let retryableError = null;
 
-      for await (const message of query({ prompt: task, options })) {
-        if (message.type === 'system' && message.subtype === 'init') {
-          onEvent({ type: 'auth', role: roleName, apiKeySource: message.apiKeySource, model: message.model });
-        } else if (message.type === 'rate_limit_event') {
-          const info = message.rate_limit_info;
-          if (info.status === 'rejected') {
-            pendingRateLimit = info;
-          } else if (info.status === 'allowed_warning') {
-            onEvent({ type: 'rate_limit_warning', role: roleName, rateLimitType: info.rateLimitType, utilization: info.utilization });
-          }
-        } else if (message.type === 'assistant') {
-          if (message.error) {
-            if (message.error in NON_RETRYABLE_ASSISTANT_ERRORS) {
-              throw new RunAbortedError(`${roleName} hit a non-retryable error (${message.error}): ${NON_RETRYABLE_ASSISTANT_ERRORS[message.error]}`);
+      // First attempt starts the session fresh under `sessionId`; every
+      // retry resumes that same session instead of resending `task` from
+      // scratch, so a role picks back up mid-work rather than redoing it.
+      const attemptOptions = attempt === 0 ? { ...options, sessionId } : { ...options, resume: sessionId };
+      const attemptPrompt = attempt === 0 ? task : RESUME_PROMPT;
+
+      try {
+        for await (const message of query({ prompt: attemptPrompt, options: attemptOptions })) {
+          if (message.type === 'system' && message.subtype === 'init') {
+            onEvent({ type: 'auth', role: roleName, apiKeySource: message.apiKeySource, model: message.model });
+          } else if (message.type === 'rate_limit_event') {
+            const info = message.rate_limit_info;
+            if (info.status === 'rejected') {
+              pendingRateLimit = info;
+            } else if (info.status === 'allowed_warning') {
+              onEvent({ type: 'rate_limit_warning', role: roleName, rateLimitType: info.rateLimitType, utilization: info.utilization });
             }
-            if (RETRYABLE_ASSISTANT_ERRORS.has(message.error)) {
-              retryableError = message.error;
+          } else if (message.type === 'assistant') {
+            if (message.error) {
+              if (message.error in NON_RETRYABLE_ASSISTANT_ERRORS) {
+                throw new RunAbortedError(`${roleName} hit a non-retryable error (${message.error}): ${NON_RETRYABLE_ASSISTANT_ERRORS[message.error]}`);
+              }
+              if (RETRYABLE_ASSISTANT_ERRORS.has(message.error)) {
+                retryableError = message.error;
+              }
             }
-          }
-          for (const block of message.message.content ?? []) {
-            if (block.type === 'text' && block.text) {
-              text += block.text;
-              onEvent({ type: 'text', role: roleName, text: block.text });
+            for (const block of message.message.content ?? []) {
+              if (block.type === 'text' && block.text) {
+                text += block.text;
+                onEvent({ type: 'text', role: roleName, text: block.text });
+              }
             }
+          } else if (message.type === 'result') {
+            resultMessage = message;
           }
-        } else if (message.type === 'result') {
-          resultMessage = message;
+        }
+      } catch (error) {
+        // A Claude subscription usage-window cap (five_hour/seven_day — distinct
+        // from the API-throttling rate_limit_event above) doesn't arrive as a
+        // streamed message: the CLI process ends after its last `result`, and
+        // the SDK surfaces it by throwing "Claude Code returned an error
+        // result: <text>" out of this async iterator instead. Left uncaught,
+        // that exception used to bubble straight out of runProject and kill
+        // the whole run instead of pausing it — reproducing exactly as "no
+        // resume button and no auto-continue" once the account's usage window
+        // was exhausted. Route it through the same backoff-retry path as any
+        // other retryable condition.
+        if (error instanceof RunAbortedError) throw error;
+        if (isUsageLimitError(error.message)) {
+          retryableError = 'usage_limit';
+        } else {
+          throw error;
         }
       }
 
@@ -210,6 +273,7 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
         onEvent({ type: 'rate_limited', role: roleName, rateLimitType: pendingRateLimit.rateLimitType, resumeAt });
         await sleep(Math.max(0, resumeAtMs - Date.now()) + RATE_LIMIT_BUFFER_MS);
         onEvent({ type: 'resumed', role: roleName });
+        attempt += 1;
         continue;
       }
 
@@ -219,6 +283,7 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
         await sleep(backoffMs);
         backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX_MS);
         onEvent({ type: 'resumed', role: roleName });
+        attempt += 1;
         continue;
       }
 
