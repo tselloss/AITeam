@@ -135,6 +135,7 @@ app.post('/api/runs', async (req, res) => {
         workspaceDir,
         branch: repo.branch,
         message: `AITeam: ${brief.slice(0, 72)}`,
+        token: githubToken,
       });
       emit(run, { type: 'finished', repo, push: pushResult, summary: result.text });
       recordRunFinish(project.id, runId, { status: 'finished', summary: result.text });
