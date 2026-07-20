@@ -16,6 +16,59 @@ function authenticatedUrl(owner, repo, token) {
   return `https://${encodeURIComponent(token)}@github.com/${owner}/${repo}.git`;
 }
 
+// Lists repos the token's owner can push to (own + collaborator + org),
+// newest-activity first, so the UI can offer a picker instead of a URL field.
+// Capped at 3 pages (300 repos) — plenty for an interactive dropdown.
+export async function listUserRepos({ token }) {
+  const repos = [];
+  for (let page = 1; page <= 3; page += 1) {
+    const response = await fetch(
+      `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`GitHub repo listing failed (${response.status}): ${await response.text()}`);
+    }
+    const data = await response.json();
+    for (const repo of data) {
+      repos.push({ fullName: repo.full_name, htmlUrl: repo.html_url, private: repo.private, defaultBranch: repo.default_branch });
+    }
+    if (data.length < 100) break;
+  }
+  return repos;
+}
+
+// Lists branches for one repo, newest-commit-activity order isn't available
+// from this endpoint so we just pass GitHub's default (alphabetical) through.
+export async function listBranches({ token, owner, repo }) {
+  const branches = [];
+  for (let page = 1; page <= 3; page += 1) {
+    const response = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches?per_page=100&page=${page}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`GitHub branch listing failed (${response.status}): ${await response.text()}`);
+    }
+    const data = await response.json();
+    for (const branch of data) branches.push(branch.name);
+    if (data.length < 100) break;
+  }
+  return branches;
+}
+
 async function createRepo({ token, name, isPrivate }) {
   const response = await fetch('https://api.github.com/user/repos', {
     method: 'POST',
@@ -34,12 +87,13 @@ async function createRepo({ token, name, isPrivate }) {
   return { owner: data.owner.login, repo: data.name, htmlUrl: data.html_url };
 }
 
-function setupClone({ token, repoUrl, workspaceDir }) {
+function setupClone({ token, repoUrl, branch, workspaceDir }) {
   const { owner, repo } = parseOwnerRepo(repoUrl);
   fs.mkdirSync(path.dirname(workspaceDir), { recursive: true });
-  git(['clone', authenticatedUrl(owner, repo, token), workspaceDir], path.dirname(workspaceDir));
-  const branch = git(['branch', '--show-current'], workspaceDir) || 'main';
-  return { owner, repo, branch, htmlUrl: `https://github.com/${owner}/${repo}` };
+  const cloneArgs = ['clone', ...(branch ? ['--branch', branch] : []), authenticatedUrl(owner, repo, token), workspaceDir];
+  git(cloneArgs, path.dirname(workspaceDir));
+  const checkedOutBranch = git(['branch', '--show-current'], workspaceDir) || branch || 'main';
+  return { owner, repo, branch: checkedOutBranch, htmlUrl: `https://github.com/${owner}/${repo}` };
 }
 
 function setupNewRepo({ token, owner, repo, workspaceDir }) {
@@ -55,7 +109,7 @@ function setupNewRepo({ token, owner, repo, workspaceDir }) {
 // ends up as a real, remote-tracked git checkout the pipeline can commit to.
 export async function prepareWorkspace({ token, target, workspaceDir }) {
   if (target.mode === 'clone') {
-    return setupClone({ token, repoUrl: target.repoUrl, workspaceDir });
+    return setupClone({ token, repoUrl: target.repoUrl, branch: target.branch, workspaceDir });
   }
   if (target.mode === 'create') {
     const created = await createRepo({ token, name: target.name, isPrivate: target.isPrivate });

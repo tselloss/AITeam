@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readConfig, writeConfig, hasConfig } from './config.js';
 import { runProject, RunAbortedError } from './orchestrator.js';
-import { prepareWorkspace, commitAndPush } from './github.js';
+import { prepareWorkspace, commitAndPush, listUserRepos, listBranches } from './github.js';
 import { listProjects, getProject, createProject, setProjectRepo, recordRunStart, recordRunFinish } from './projects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +72,30 @@ app.get('/api/config', (_req, res) => {
 app.post('/api/config', (req, res) => {
   const { githubToken } = req.body ?? {};
   res.json(writeConfig({ githubToken }));
+});
+
+app.get('/api/github/repos', async (_req, res) => {
+  const { githubToken } = readConfig();
+  if (!githubToken) {
+    return res.status(400).json({ error: 'save your GitHub token in Settings first' });
+  }
+  try {
+    res.json(await listUserRepos({ token: githubToken }));
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
+});
+
+app.get('/api/github/repos/:owner/:repo/branches', async (req, res) => {
+  const { githubToken } = readConfig();
+  if (!githubToken) {
+    return res.status(400).json({ error: 'save your GitHub token in Settings first' });
+  }
+  try {
+    res.json(await listBranches({ token: githubToken, owner: req.params.owner, repo: req.params.repo }));
+  } catch (error) {
+    res.status(502).json({ error: error.message });
+  }
 });
 
 app.get('/api/projects', (_req, res) => {

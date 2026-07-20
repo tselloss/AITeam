@@ -62,7 +62,7 @@
   label { display: block; margin: 0.5rem 0; }
   label small { font-weight: normal; opacity: 0.6; }
   h2 small { font-weight: normal; opacity: 0.6; font-size: 0.85rem; color: inherit; }
-  input[type="text"], input[type="password"], textarea {
+  input[type="text"], input[type="password"], textarea, select {
     width: 100%;
     box-sizing: border-box;
     padding: 0.4rem 0.5rem;
@@ -73,7 +73,8 @@
     background: color-mix(in srgb, currentColor 4%, transparent);
     color: inherit;
   }
-  input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
+  select { color-scheme: light dark; }
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
     outline: 2px solid var(--section-accent, var(--violet));
     outline-offset: 1px;
   }
@@ -250,7 +251,8 @@
       <input type="text" id="newRepoName" placeholder="repo-name" />
       <label><input type="checkbox" id="isPrivate" checked /> Private (witness protection for your code)</label>
       <label><input type="radio" name="targetMode" value="clone" /> Use an existing repo (inherit someone else's mess)</label>
-      <input type="text" id="repoUrl" placeholder="https://github.com/owner/repo" />
+      <select id="repoSelect"><option value="">Save a GitHub token above, then pick a repo…</option></select>
+      <select id="branchSelect" disabled><option value="">Pick a repo first…</option></select>
     </fieldset>
     <label><input type="checkbox" id="autonomousMode" /> Autonomous mode <small>— never pause for my approval, including critical-severity findings; just use your best judgment and keep going. Also survives usage-limit pauses on its own (see the log).</small></label>
     <button id="runButton">🚀 Assemble the Team</button>
@@ -263,13 +265,80 @@
 
 <script>
   const settingsStatus = document.getElementById('settingsStatus');
+  const repoSelect = document.getElementById('repoSelect');
+  const branchSelect = document.getElementById('branchSelect');
 
   async function loadSettingsStatus() {
     const res = await fetch('/api/config');
     const data = await res.json();
     settingsStatus.textContent = `GitHub token: ${data.hasGithubToken ? 'saved' : 'not set'}`;
+    if (data.hasGithubToken) loadRepoOptions();
   }
   loadSettingsStatus();
+
+  async function loadRepoOptions() {
+    repoSelect.innerHTML = '<option value="">Loading your repos…</option>';
+    try {
+      const res = await fetch('/api/github/repos');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not load repos');
+      const repos = await res.json();
+      repoSelect.innerHTML = '';
+      if (!repos.length) {
+        repoSelect.innerHTML = '<option value="">No repos found for this token</option>';
+        return;
+      }
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a repo…';
+      repoSelect.appendChild(placeholder);
+      for (const repo of repos) {
+        const option = document.createElement('option');
+        option.value = repo.htmlUrl;
+        option.dataset.fullName = repo.fullName;
+        option.dataset.defaultBranch = repo.defaultBranch;
+        option.textContent = `${repo.fullName}${repo.private ? ' 🔒' : ''}`;
+        repoSelect.appendChild(option);
+      }
+    } catch (error) {
+      repoSelect.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+    }
+  }
+
+  repoSelect.addEventListener('change', () => loadBranchOptions());
+
+  async function loadBranchOptions() {
+    const selected = repoSelect.options[repoSelect.selectedIndex];
+    const fullName = selected?.dataset.fullName;
+    if (!fullName) {
+      branchSelect.innerHTML = '<option value="">Pick a repo first…</option>';
+      branchSelect.disabled = true;
+      return;
+    }
+    const [owner, repo] = fullName.split('/');
+    const defaultBranch = selected.dataset.defaultBranch;
+    branchSelect.disabled = false;
+    branchSelect.innerHTML = '<option value="">Loading branches…</option>';
+    try {
+      const res = await fetch(`/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not load branches');
+      const branches = await res.json();
+      branchSelect.innerHTML = '';
+      if (!branches.length) {
+        branchSelect.innerHTML = '<option value="">No branches found</option>';
+        return;
+      }
+      for (const branch of branches) {
+        const option = document.createElement('option');
+        option.value = branch;
+        option.textContent = branch === defaultBranch ? `${branch} (default)` : branch;
+        branchSelect.appendChild(option);
+      }
+      branchSelect.value = defaultBranch && branches.includes(defaultBranch) ? defaultBranch : branches[0];
+    } catch (error) {
+      branchSelect.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+      branchSelect.disabled = true;
+    }
+  }
 
   document.getElementById('saveSettings').addEventListener('click', async () => {
     const githubToken = document.getElementById('githubToken').value;
@@ -640,9 +709,17 @@
     if (!brief) return;
 
     const mode = document.querySelector('input[name="targetMode"]:checked').value;
+    if (mode === 'clone' && !repoSelect.value) {
+      alert('pick a repo from the dropdown first');
+      return;
+    }
+    if (mode === 'clone' && !branchSelect.value) {
+      alert('pick a branch from the dropdown first');
+      return;
+    }
     const target = mode === 'create'
       ? { mode: 'create', name: document.getElementById('newRepoName').value.trim(), isPrivate: document.getElementById('isPrivate').checked }
-      : { mode: 'clone', repoUrl: document.getElementById('repoUrl').value.trim() };
+      : { mode: 'clone', repoUrl: repoSelect.value, branch: branchSelect.value };
 
     const runButton = document.getElementById('runButton');
     runButton.disabled = true;
