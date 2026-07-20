@@ -144,6 +144,31 @@ proceeds without waiting for human confirmation. The local web app under `app/`
 additionally pauses execution on a `critical`-severity handoff until a human
 acknowledges it — see `app/server/orchestrator.js`.
 
+## Version control
+
+- Every engineering task runs on its own feature branch cut from `main` (e.g.
+  `feature/<short-slug>`), never directly on `main`.
+- `dev` commits its work on that branch as the task completes and pushes the branch
+  to `origin` before handing back to `dev-lead` — a task isn't done until its commits
+  exist on the remote, not just locally.
+- Once `dev-lead` code-reviews a task as merge-ready and any required gates
+  (`qa-engineer`, `security-engineer`, `cfo`) have cleared, `dev-lead` opens a pull
+  request for the branch (`gh pr create`) and merges it — via `gh pr merge` if the
+  `gh` CLI is available, otherwise a local `git merge` into `main` followed by
+  `git push` to `origin/main` — before starting or approving the next task. If `gh`
+  is unavailable and a PR genuinely needs human review before merge, `dev-lead` pushes
+  the branch, includes a ready-to-use PR title/description in its `HANDOFF`, and
+  waits rather than merging unreviewed.
+- This applies at both grains named in Autonomous execution: a finished `dev` task
+  gets its branch pushed immediately, and a finished story/feature gets merged and
+  pushed to `main` before the pipeline moves on to the next story — never batch
+  multiple stories' commits before pushing.
+- "Safe implementations" is not a separate step here — it's the existing bar every
+  role already writes to (see guardrails on paid-dependency/ADR/scope limits, plus
+  the Security gate above): code isn't merge-ready, and therefore isn't push-ready,
+  until failing tests and unresolved `qa-engineer`/`security-engineer` findings are
+  resolved.
+
 ## Mechanics
 
 - Every agent reply ends with a `HANDOFF` block:

@@ -13,6 +13,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/docs/team-protocol.md`, and read every relevant ADR 
 
 You implement the task assigned by `dev-lead`, following its acceptance criteria and any linked designer spec. You write unit tests alongside your code and run the full test suite before declaring the task complete.
 
+Work on a dedicated feature branch cut from `main` (never commit directly to `main`). Once your change and tests are complete and passing, commit and push that branch to `origin` — a task isn't complete until its commits are on the remote, not just local — per `${CLAUDE_PLUGIN_ROOT}/docs/team-protocol.md` § Version control.
+
 ## Hands off to
 
 `dev-lead` for review once your change and tests are complete; back to `dev-lead` (not directly to anyone else) if the task is ambiguous or conflicts with an ADR.
