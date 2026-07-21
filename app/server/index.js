@@ -6,6 +6,7 @@ import { readConfig, writeConfig, hasConfig } from './config.js';
 import { runProject, RunAbortedError } from './orchestrator.js';
 import { prepareWorkspace, commitAndPush, listUserRepos, listBranches, redactCredentials } from './github.js';
 import { listProjects, getProject, createProject, setProjectRepo, recordRunStart, recordRunFinish } from './projects.js';
+import { startBuildRun } from './build-runner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.join(__dirname, '..');
@@ -29,8 +30,20 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(appRoot, 'public')));
 
-/** @type {Map<string, {projectId: string, events: object[], listeners: Set<import('express').Response>, pendingApprovals: Map<string, (decision: {approved: boolean, reason?: string}) => void>, done: boolean}>} */
+/** @type {Map<string, {projectId: string, events: object[], listeners: Set<import('express').Response>, pendingApprovals: Map<string, (decision: {approved: boolean, reason?: string}) => void>, done: boolean, abortController: AbortController}>} */
 const runs = new Map();
+
+// "Build & Run" previews (build-runner.js) — separate from `runs` above,
+// keyed by the same runId, but polled rather than streamed over SSE (see
+// GET /api/runs/:id/build) since they're commonly started well after that
+// run's own event stream has already closed.
+/** @type {Map<string, import('./build-runner.js').BuildRun>} */
+const buildRuns = new Map();
+// A live dev server/static server holds a port open — don't leave one
+// orphaned just because the parent process exited.
+process.on('exit', () => {
+  for (const buildRun of buildRuns.values()) buildRun.stop();
+});
 
 function emit(run, event) {
   run.events.push(event);
@@ -148,9 +161,16 @@ app.post('/api/runs', async (req, res) => {
 
   const runId = randomUUID();
   const workspaceDir = path.join(workspacesRoot, `${slugify(brief)}-${Date.now()}`);
-  const run = { projectId: project.id, events: [], listeners: new Set(), pendingApprovals: new Map(), done: false };
+  const run = {
+    projectId: project.id,
+    events: [],
+    listeners: new Set(),
+    pendingApprovals: new Map(),
+    done: false,
+    abortController: new AbortController(),
+  };
   runs.set(runId, run);
-  recordRunStart(project.id, { runId, brief, autonomous: Boolean(autonomous) });
+  recordRunStart(project.id, { runId, brief, autonomous: Boolean(autonomous), workspaceDir });
   res.status(202).json({ runId, projectId: project.id });
 
   (async () => {
@@ -167,6 +187,7 @@ app.post('/api/runs', async (req, res) => {
         brief,
         onEvent: (event) => emit(run, event),
         requestApproval,
+        abortController: run.abortController,
       });
 
       const pushResult = commitAndPush({
@@ -206,15 +227,90 @@ app.get('/api/runs/:id/events', (req, res) => {
   req.on('close', () => run.listeners.delete(res));
 });
 
+// Shared by the single-approval endpoint below and the stop endpoint, which
+// must resolve every approval still pending on a run (not just one) so an
+// awaited canUseTool call doesn't hang forever after abortController.abort().
+function resolvePendingApproval(run, approvalId, decision) {
+  const resolve = run.pendingApprovals.get(approvalId);
+  if (!resolve) return false;
+  run.pendingApprovals.delete(approvalId);
+  resolve(decision);
+  emit(run, { type: 'approval_resolved', approvalId, approved: decision.approved, reason: decision.reason });
+  return true;
+}
+
 app.post('/api/runs/:id/approve', (req, res) => {
   const run = runs.get(req.params.id);
   if (!run) return res.status(404).end();
   const { approvalId, approved, reason } = req.body ?? {};
-  const resolve = run.pendingApprovals.get(approvalId);
-  if (!resolve) return res.status(404).json({ error: 'no pending approval with that id' });
-  run.pendingApprovals.delete(approvalId);
-  resolve({ approved: Boolean(approved), reason });
-  emit(run, { type: 'approval_resolved', approvalId, approved: Boolean(approved), reason });
+  if (!resolvePendingApproval(run, approvalId, { approved: Boolean(approved), reason })) {
+    return res.status(404).json({ error: 'no pending approval with that id' });
+  }
+  res.status(204).end();
+});
+
+// Lets the run creator bail out early — e.g. after realizing the first
+// prompt was wrong — instead of waiting for the pipeline to run its course.
+// Aborts the shared AbortController (orchestrator.js checks it before every
+// role and threads it into every query() call) and unblocks any approval
+// the run is currently paused on, which would otherwise hang forever.
+app.post('/api/runs/:id/stop', (req, res) => {
+  const run = runs.get(req.params.id);
+  if (!run) return res.status(404).end();
+  if (run.done) return res.status(409).json({ error: 'this run has already finished' });
+  run.abortController.abort();
+  for (const approvalId of [...run.pendingApprovals.keys()]) {
+    resolvePendingApproval(run, approvalId, { approved: false, reason: 'run stopped by user' });
+  }
+  emit(run, { type: 'stop_requested' });
+  res.status(202).json({ stopping: true });
+});
+
+// Looks a run's workspaceDir up from the persisted project record rather
+// than the in-memory `runs` Map, so "Build & Run" also works for a run from
+// before the last server restart (the in-memory entry doesn't survive one,
+// the project.json record does).
+function findRunWorkspaceDir(projectId, runId) {
+  const project = getProject(projectId);
+  const run = project?.runs.find((r) => r.runId === runId);
+  return run?.workspaceDir ?? null;
+}
+
+// Installs and starts whatever the agents just wrote, directly against the
+// run's local workspace (not the pushed repo, so it reflects on-disk state
+// even after an error before any commit). Only ever starts on this explicit
+// call — never automatically — since it runs the agents' own install/start
+// scripts unattended.
+app.post('/api/runs/:id/build', (req, res) => {
+  const runId = req.params.id;
+  const { projectId } = req.body ?? {};
+  if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+  const workspaceDir = findRunWorkspaceDir(projectId, runId);
+  if (!workspaceDir) return res.status(404).json({ error: 'no workspace found for this run' });
+
+  buildRuns.get(runId)?.stop();
+  buildRuns.set(runId, startBuildRun(workspaceDir));
+  res.status(202).json({ started: true });
+});
+
+// Polled rather than streamed (see the buildRuns comment above) — cheap
+// enough for a UI checking in every second or two while it waits.
+app.get('/api/runs/:id/build', (req, res) => {
+  const buildRun = buildRuns.get(req.params.id);
+  if (!buildRun) return res.status(404).json({ error: 'no build/run started for this run' });
+  res.json({
+    status: buildRun.status,
+    url: buildRun.url,
+    message: buildRun.message,
+    log: buildRun.logLines.slice(-60),
+  });
+});
+
+app.post('/api/runs/:id/build/stop', (req, res) => {
+  const buildRun = buildRuns.get(req.params.id);
+  if (!buildRun) return res.status(404).end();
+  buildRun.stop();
+  buildRuns.delete(req.params.id);
   res.status(204).end();
 });
 
