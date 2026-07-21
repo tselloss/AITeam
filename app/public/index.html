@@ -218,6 +218,60 @@
   .approval-card.resolved { opacity: 0.6; }
   .approval-card button[data-decision="allow"] { background: var(--success); color: var(--ink); }
   .approval-card button[data-decision="deny"] { background: var(--error); color: var(--ink); }
+  .run-panel summary { display: flex; align-items: center; gap: 0.5rem; }
+  .run-panel summary span.summary-text { flex: 1; overflow-wrap: anywhere; }
+  .stop-run-btn {
+    background: var(--error);
+    color: var(--ink);
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+  .retry-run-btn {
+    background: var(--teal);
+    color: var(--ink);
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+  .build-run-btn {
+    background: #2563eb;
+    color: #fff;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    margin-top: 0;
+    flex-shrink: 0;
+  }
+  .build-panel {
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  .build-panel .build-status { font-weight: 600; }
+  .build-panel .build-open {
+    display: inline-block;
+    margin-left: 0.5rem;
+    background: var(--success);
+    color: var(--ink);
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .build-panel pre.build-log {
+    max-height: 180px;
+    overflow-y: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 0.78rem;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin: 0.4rem 0 0;
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
@@ -439,7 +493,13 @@
   // Builds a self-contained set of log/approval renderers bound to one run's
   // own panel — this is what lets several runs stream into the page at once
   // without stepping on each other's DOM or approval endpoint.
-  function makeRunHandlers(runId, logOutput, summary, label) {
+  function makeRunHandlers(runId, logOutput, summary, label, stopButton, retryButton, buildButton, meta) {
+    function retireButton(button, text) {
+      button.disabled = true;
+      button.textContent = text;
+      button.hidden = true;
+    }
+
     function logLine(cls, text) {
       const div = document.createElement('div');
       div.className = `log-line ${cls}`;
@@ -567,14 +627,26 @@
         case 'warning':
           logLine('warning', `⚠ [${event.role}] ${event.text}`);
           break;
+        case 'stop_requested':
+          logLine('warning', '🛑 Stop requested — winding down…');
+          summary.textContent = `${label} — 🛑 stopping…`;
+          stopButton.disabled = true;
+          stopButton.textContent = 'Stopping…';
+          break;
         case 'error':
-          logLine('error', `✖ ${event.message}`);
-          summary.textContent = `${label} — ✖ error`;
+          logLine('error', event.aborted ? `🛑 ${event.message}` : `✖ ${event.message}`);
+          summary.textContent = `${label} — ${event.aborted ? '🛑 stopped' : '✖ error'}`;
+          retireButton(stopButton, 'Stopped');
+          if (meta?.brief) retryButton.hidden = false;
+          if (meta?.projectId) buildButton.hidden = false;
           loadProjects();
           break;
         case 'finished':
           logLine('finished', `🎉 Ship it! Pushed to ${event.repo.htmlUrl}${event.push.pushed ? '' : ' (nothing new to commit — everyone was just vibing)'}`);
           summary.textContent = `${label} — 🎉 finished`;
+          retireButton(stopButton, 'Done');
+          retireButton(retryButton, 'Done');
+          if (meta?.projectId) buildButton.hidden = false;
           loadProjects();
           break;
         default:
@@ -588,7 +660,10 @@
   // Opens (or reopens, after a page reload) the live SSE stream for one run
   // and gives it its own panel — safe to call more than once for the same
   // runId, since a run already showing on the page is never re-attached.
-  function attachRun(runId, label) {
+  // `meta` ({ projectId, brief, autonomous }) is what a Retry click on this
+  // panel resubmits — absent for runs the page can't retry (there always is
+  // one in practice; every run is tied to a project by the time it starts).
+  function attachRun(runId, label, meta) {
     if (attachedRuns.has(runId)) return;
     attachedRuns.add(runId);
 
@@ -596,14 +671,177 @@
     details.className = 'run-panel';
     details.open = true;
     const summary = document.createElement('summary');
-    summary.textContent = `${label} — starting…`;
+    const summaryText = document.createElement('span');
+    summaryText.className = 'summary-text';
+    summaryText.textContent = `${label} — starting…`;
+    const stopButton = document.createElement('button');
+    stopButton.type = 'button';
+    stopButton.className = 'stop-run-btn';
+    stopButton.textContent = '🛑 Stop';
+    stopButton.title = 'Stop this run now — e.g. the first prompt was wrong';
+    stopButton.addEventListener('click', async (event) => {
+      // Stop lives inside a <summary>; a plain click there would also
+      // toggle the <details> panel open/closed.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!confirm('Stop this run? Work in progress will be abandoned.')) return;
+      stopButton.disabled = true;
+      stopButton.textContent = 'Stopping…';
+      try {
+        const res = await fetch(`/api/runs/${runId}/stop`, { method: 'POST' });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          alert(body.error || 'could not stop this run');
+          stopButton.disabled = false;
+          stopButton.textContent = '🛑 Stop';
+        }
+      } catch (error) {
+        alert('could not stop this run');
+        stopButton.disabled = false;
+        stopButton.textContent = '🛑 Stop';
+      }
+    });
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.className = 'retry-run-btn';
+    retryButton.textContent = '🔁 Retry';
+    retryButton.title = 'Run the exact same brief again';
+    retryButton.hidden = true;
+    retryButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!meta?.projectId || !meta?.brief) return;
+      retryButton.disabled = true;
+      retryButton.textContent = 'Retrying…';
+      try {
+        const res = await fetch('/api/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: meta.projectId, brief: meta.brief, autonomous: Boolean(meta.autonomous) }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          alert(body.error || 'could not retry this run');
+          retryButton.disabled = false;
+          retryButton.textContent = '🔁 Retry';
+          return;
+        }
+        const { runId: newRunId } = await res.json();
+        retryButton.textContent = 'Retried ↓';
+        retryButton.disabled = true;
+        attachRun(newRunId, label, meta);
+        loadProjects();
+      } catch (error) {
+        alert('could not retry this run');
+        retryButton.disabled = false;
+        retryButton.textContent = '🔁 Retry';
+      }
+    });
+    const buildButton = document.createElement('button');
+    buildButton.type = 'button';
+    buildButton.className = 'build-run-btn';
+    buildButton.textContent = '🛠️ Build & Run';
+    buildButton.title = "Install and start this run's local workspace, then open it in a new tab";
+    buildButton.hidden = true;
+
+    const buildPanel = document.createElement('div');
+    buildPanel.className = 'build-panel';
+    buildPanel.hidden = true;
+    buildPanel.innerHTML =
+      '<span class="build-status"></span>' +
+      '<a class="build-open" href="#" target="_blank" rel="noopener noreferrer" hidden>Open app ↗</a>' +
+      '<pre class="build-log"></pre>';
+    const buildStatusEl = buildPanel.querySelector('.build-status');
+    const buildOpenEl = buildPanel.querySelector('.build-open');
+    const buildLogEl = buildPanel.querySelector('.build-log');
+
+    const BUILD_STATUS_LABEL = {
+      starting: '⏳ starting…',
+      installing: '📦 installing dependencies…',
+      booting: '🚀 starting the app…',
+      ready: '✅ running',
+      running_no_url: '❓ running, but no URL detected',
+      error: '✖ failed',
+    };
+    let buildPollTimer = null;
+    function stopBuildPolling() {
+      if (buildPollTimer) { clearInterval(buildPollTimer); buildPollTimer = null; }
+    }
+    async function pollBuild() {
+      const res = await fetch(`/api/runs/${runId}/build`);
+      if (!res.ok) { stopBuildPolling(); return; }
+      const data = await res.json();
+      buildStatusEl.textContent = (BUILD_STATUS_LABEL[data.status] || data.status) + (data.message ? ` — ${data.message}` : '');
+      buildLogEl.textContent = data.log.join('\n');
+      buildLogEl.scrollTop = buildLogEl.scrollHeight;
+      buildOpenEl.hidden = !data.url;
+      if (data.url) buildOpenEl.href = data.url;
+      if (data.status === 'ready' || data.status === 'running_no_url') {
+        buildButton.disabled = false;
+        buildButton.textContent = '🛑 Stop app';
+      } else if (data.status === 'error') {
+        stopBuildPolling();
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Retry build';
+      }
+    }
+    buildButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (buildButton.textContent === '🛑 Stop app') {
+        stopBuildPolling();
+        buildButton.disabled = true;
+        await fetch(`/api/runs/${runId}/build/stop`, { method: 'POST' });
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Build & Run';
+        buildOpenEl.hidden = true;
+        buildStatusEl.textContent = 'stopped';
+        return;
+      }
+      if (!meta?.projectId) return;
+      buildButton.disabled = true;
+      buildButton.textContent = 'Starting…';
+      buildPanel.hidden = false;
+      buildStatusEl.textContent = '⏳ starting…';
+      buildLogEl.textContent = '';
+      buildOpenEl.hidden = true;
+      try {
+        const res = await fetch(`/api/runs/${runId}/build`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: meta.projectId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          buildStatusEl.textContent = body.error || 'could not start';
+          buildButton.disabled = false;
+          buildButton.textContent = '🛠️ Build & Run';
+          return;
+        }
+        buildButton.disabled = false;
+        buildButton.textContent = '🛑 Stop app';
+        stopBuildPolling();
+        buildPollTimer = setInterval(pollBuild, 1500);
+        pollBuild();
+      } catch (error) {
+        buildStatusEl.textContent = 'could not start';
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Build & Run';
+      }
+    });
+
+    summary.appendChild(summaryText);
+    summary.appendChild(buildButton);
+    summary.appendChild(retryButton);
+    summary.appendChild(stopButton);
     const logOutput = document.createElement('div');
     logOutput.className = 'run-log';
     details.appendChild(summary);
     details.appendChild(logOutput);
+    details.appendChild(buildPanel);
     runsContainer.prepend(details);
 
-    const { handleEvent } = makeRunHandlers(runId, logOutput, summary, label);
+    const { handleEvent } = makeRunHandlers(runId, logOutput, summaryText, label, stopButton, retryButton, buildButton, meta);
     const source = new EventSource(`/api/runs/${runId}/events`);
     source.onmessage = (message) => handleEvent(JSON.parse(message.data));
     source.onerror = () => source.close();
@@ -698,11 +936,15 @@
         return;
       }
       const { runId } = await res.json();
-      attachRun(runId, projectLabel(project));
+      attachRun(runId, projectLabel(project), { projectId: project.id, brief, autonomous: autoCheckbox.checked });
       loadProjects();
     });
 
-    if (project.activeRunId) attachRun(project.activeRunId, projectLabel(project));
+    if (project.activeRunId) {
+      attachRun(project.activeRunId, projectLabel(project), lastRun
+        ? { projectId: project.id, brief: lastRun.brief, autonomous: lastRun.autonomous }
+        : { projectId: project.id });
+    }
 
     return card;
   }
@@ -755,8 +997,8 @@
       alert(body.error || 'could not start the run (the team is refusing to work, understandable)');
       return;
     }
-    const { runId } = await res.json();
-    attachRun(runId, mode === 'create' ? target.name : target.repoUrl);
+    const { runId, projectId } = await res.json();
+    attachRun(runId, mode === 'create' ? target.name : target.repoUrl, { projectId, brief, autonomous });
     document.getElementById('brief').value = '';
     loadProjects();
   });

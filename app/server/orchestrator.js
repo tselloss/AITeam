@@ -74,8 +74,21 @@ const BACKOFF_MAX_MS = 10 * 60 * 1000;
 const RATE_LIMIT_BUFFER_MS = 30 * 1000;
 const RATE_LIMIT_POLL_MS = 5 * 60 * 1000;
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Abort-aware: a stop click can land mid-backoff (the longest of which is
+// BACKOFF_MAX_MS/RATE_LIMIT_POLL_MS, several minutes) and must not have to
+// wait that out before the run actually stops.
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new RunAbortedError('run stopped by user'));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new RunAbortedError('run stopped by user'));
+    }, { once: true });
+  });
 }
 
 // Sent instead of the original task on a resumed attempt — the resumed
@@ -112,11 +125,17 @@ export class RunAbortedError extends Error {}
 // `requestApproval(role, toolName, input)` must return a Promise resolving
 // to `{ approved, reason? }` — the caller (app/server/index.js) owns pausing
 // for a UI click and answering it via POST /api/runs/:id/approve.
-export async function runProject({ workspaceDir, brief, onEvent, requestApproval }) {
+// `abortController`, if given, lets the caller stop the run early (a "wrong
+// first prompt" bailout) — shared across every role/retry in this run so one
+// `.abort()` call reaches whichever role is currently active.
+export async function runProject({ workspaceDir, brief, onEvent, requestApproval, abortController }) {
   const roster = new Set(listAgentFiles(AGENTS_DIR).map((f) => f.replace(/\.md$/, '')));
   let invocationCount = 0;
 
   async function runRole(roleName, task) {
+    if (abortController?.signal.aborted) {
+      throw new RunAbortedError('run stopped by user');
+    }
     if (!roster.has(roleName)) {
       throw new Error(`unknown role named in a HANDOFF/delegate call: ${roleName}`);
     }
@@ -169,6 +188,7 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
       tools: sdkTools,
       mcpServers: { aiteam: aiteamServer },
       maxTurns: MAX_TURNS_PER_ROLE,
+      abortController,
       canUseTool: async (toolName, input) => {
         for (const key of PATH_INPUT_KEYS) {
           if (typeof input[key] !== 'string') continue;
@@ -260,6 +280,14 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
         // was exhausted. Route it through the same backoff-retry path as any
         // other retryable condition.
         if (error instanceof RunAbortedError) throw error;
+        // A stop click aborts `abortController`, which the SDK surfaces by
+        // tearing down the in-flight query — as an AbortError, a generic
+        // stream failure, or (per the SDK's own doc) sometimes no error at
+        // all, just an early-ended generator. The signal being set is what
+        // actually tells us this was a deliberate stop, not a real failure.
+        if (abortController?.signal.aborted) {
+          throw new RunAbortedError('run stopped by user');
+        }
         if (isUsageLimitError(error.message)) {
           retryableError = 'usage_limit';
         } else {
@@ -267,11 +295,15 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
         }
       }
 
+      if (abortController?.signal.aborted) {
+        throw new RunAbortedError('run stopped by user');
+      }
+
       if (pendingRateLimit) {
         const resumeAtMs = normalizeEpochMs(pendingRateLimit.resetsAt) ?? (Date.now() + RATE_LIMIT_POLL_MS);
         const resumeAt = new Date(resumeAtMs).toISOString();
         onEvent({ type: 'rate_limited', role: roleName, rateLimitType: pendingRateLimit.rateLimitType, resumeAt });
-        await sleep(Math.max(0, resumeAtMs - Date.now()) + RATE_LIMIT_BUFFER_MS);
+        await sleep(Math.max(0, resumeAtMs - Date.now()) + RATE_LIMIT_BUFFER_MS, abortController?.signal);
         onEvent({ type: 'resumed', role: roleName });
         attempt += 1;
         continue;
@@ -280,7 +312,7 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
       if (retryableError) {
         const resumeAt = new Date(Date.now() + backoffMs).toISOString();
         onEvent({ type: 'rate_limited', role: roleName, reason: retryableError, resumeAt });
-        await sleep(backoffMs);
+        await sleep(backoffMs, abortController?.signal);
         backoffMs = Math.min(backoffMs * 2, BACKOFF_MAX_MS);
         onEvent({ type: 'resumed', role: roleName });
         attempt += 1;

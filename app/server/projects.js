@@ -62,11 +62,11 @@ export function setProjectRepo(id, repo) {
   writeAll(projects);
 }
 
-export function recordRunStart(projectId, { runId, brief, autonomous }) {
+export function recordRunStart(projectId, { runId, brief, autonomous, workspaceDir }) {
   const projects = readAll();
   const project = projects.find((p) => p.id === projectId);
   if (!project) return;
-  project.runs.unshift({ runId, brief, autonomous, status: 'running', startedAt: new Date().toISOString(), finishedAt: null, summary: null, error: null });
+  project.runs.unshift({ runId, brief, autonomous, workspaceDir, status: 'running', startedAt: new Date().toISOString(), finishedAt: null, summary: null, error: null });
   project.updatedAt = new Date().toISOString();
   writeAll(projects);
 }
