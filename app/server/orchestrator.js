@@ -32,6 +32,16 @@ const EFFORT_FOR_TIER = { opus: 'high', sonnet: 'medium' };
 const MAX_ROLE_INVOCATIONS_PER_RUN = 40;
 const MAX_TURNS_PER_ROLE = 40;
 
+// ceo and dev-lead are the only roles holding the Agent tool, so theirs is the
+// only turn budget that has to cover orchestrating multiple nested delegate()
+// calls plus, for dev-lead, a Bash/Read/Grep code review and gh pr create/merge
+// per story before starting the next one. A minimal 2-story fan-out exhausted
+// the shared 40-turn cap without completing (see
+// app/workspaces/*/docs/decisions/2026-07-20-phase-10-*-tooling.md) — the
+// review-and-merge workload per delegated task, not a bug, was eating the
+// budget. Leaf roles (dev, qa-engineer, etc.) keep the lower cap.
+const MAX_TURNS_FOR_DELEGATING_ROLE = 150;
+
 // Matches docs/team-protocol.md § Triage rubric's top severity tier — always
 // loops `ceo` in; enforced here rather than trusted to prompt-following,
 // same reasoning as the caps above.
@@ -187,7 +197,7 @@ export async function runProject({ workspaceDir, brief, onEvent, requestApproval
       systemPrompt: agent.systemPrompt,
       tools: sdkTools,
       mcpServers: { aiteam: aiteamServer },
-      maxTurns: MAX_TURNS_PER_ROLE,
+      maxTurns: agent.tools.includes('Agent') ? MAX_TURNS_FOR_DELEGATING_ROLE : MAX_TURNS_PER_ROLE,
       abortController,
       canUseTool: async (toolName, input) => {
         for (const key of PATH_INPUT_KEYS) {
