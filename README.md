@@ -132,12 +132,18 @@ node --test
 .claude/agents/   the 15 role definitions (the entire payroll)
 .claude-plugin/   plugin.json + a self-referencing marketplace.json
 agents/           generated plugin copies of .claude/agents/*.md (npm run build:plugin)
+scripts/
+  build-plugin.mjs  regenerates agents/ from .claude/agents/
+app/                the optional local web UI (npm start), gitignored workspaces/ per run
 docs/
   org-chart.md      roster, pipelines, and the roles that didn't make the cut
   team-protocol.md  canonical collaboration protocol agents read at runtime
 tests/
-  agents.test.mjs   offline structural + policy tests
-  plugin.test.mjs   offline plugin manifest + agents/ sync tests
+  agents.test.mjs       offline structural + policy tests
+  plugin.test.mjs       offline plugin manifest + agents/ sync tests
+  handoff.test.mjs      offline HANDOFF-line parser tests
+  tool-runtime.test.mjs offline sandbox-boundary tests for the local runner's tool gate
+  github.test.mjs       offline tests for the local runner's GitHub integration
 ```
 
 ## Learn more
