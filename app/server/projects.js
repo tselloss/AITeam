@@ -1,0 +1,113 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECTS_PATH = path.join(__dirname, '..', 'projects.json');
+
+// Persists the project list (target repo + run history) so it survives a
+// server restart — separate from the in-memory `runs` Map in index.js,
+// which only holds live SSE state for runs still streaming. Reads/writes
+// are synchronous on purpose: this is a low-volume local dev tool, and
+// synchronous fs calls can't interleave with each other the way concurrent
+// awaited ones could, which keeps read-modify-write updates from two runs
+// finishing at nearly the same time from clobbering each other.
+function readAll() {
+  if (!fs.existsSync(PROJECTS_PATH)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(PROJECTS_PATH, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function writeAll(projects) {
+  // `mode` on writeFileSync only applies when the file doesn't exist yet, so
+  // chmod explicitly too — otherwise a projects.json left over from before
+  // this file held run errors (which can contain a leaked secret, see
+  // recordRunFinish) stays world-readable forever.
+  fs.writeFileSync(PROJECTS_PATH, JSON.stringify(projects, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.chmodSync(PROJECTS_PATH, 0o600);
+}
+
+export function listProjects() {
+  return readAll().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function getProject(id) {
+  return readAll().find((p) => p.id === id) ?? null;
+}
+
+// Creates a project the first time a brief runs against a target repo.
+// `target` is the same shape POST /api/runs already accepts
+// ({mode: 'clone', repoUrl} or {mode: 'create', name, isPrivate}); `repo`
+// is filled in once prepareWorkspace resolves the actual owner/repo (only
+// known upfront for 'clone', only known after creation for 'create').
+export function createProject({ name, target, repo }) {
+  const projects = readAll();
+  const now = new Date().toISOString();
+  const project = { id: randomUUID(), name, target, repo: repo ?? null, createdAt: now, updatedAt: now, runs: [] };
+  projects.push(project);
+  writeAll(projects);
+  return project;
+}
+
+export function setProjectRepo(id, repo) {
+  const projects = readAll();
+  const project = projects.find((p) => p.id === id);
+  if (!project) return;
+  project.repo = repo;
+  project.updatedAt = new Date().toISOString();
+  writeAll(projects);
+}
+
+export function recordRunStart(projectId, { runId, brief, autonomous, workspaceDir }) {
+  const projects = readAll();
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  project.runs.unshift({ runId, brief, autonomous, workspaceDir, status: 'running', startedAt: new Date().toISOString(), finishedAt: null, summary: null, error: null });
+  project.updatedAt = new Date().toISOString();
+  writeAll(projects);
+}
+
+// Called once at server startup. A run's live state (the in-memory `runs`
+// Map in index.js) never survives a process restart, but a run's persisted
+// record can be left at status: 'running' forever if the process died or
+// was restarted mid-run — nothing will ever call recordRunFinish for it
+// again. Sweep those into 'error' so the UI shows an honest "last run
+// errored" instead of silently falling back to its default "idle" label
+// (which is what a lastRun.status matching none of the known terminal
+// states renders as).
+export function reconcileOrphanedRuns() {
+  const projects = readAll();
+  let changed = false;
+  const now = new Date().toISOString();
+  for (const project of projects) {
+    for (const run of project.runs) {
+      if (run.status === 'running') {
+        run.status = 'error';
+        run.error = 'Interrupted — the AITeam server restarted or crashed while this run was in progress.';
+        run.finishedAt = now;
+        project.updatedAt = now;
+        changed = true;
+      }
+    }
+  }
+  if (changed) writeAll(projects);
+}
+
+export function recordRunFinish(projectId, runId, { status, summary, error }) {
+  const projects = readAll();
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) return;
+  const run = project.runs.find((r) => r.runId === runId);
+  if (run) {
+    run.status = status;
+    run.summary = summary ?? null;
+    run.error = error ?? null;
+    run.finishedAt = new Date().toISOString();
+  }
+  project.updatedAt = new Date().toISOString();
+  writeAll(projects);
+}

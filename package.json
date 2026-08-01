@@ -1,0 +1,19 @@
+{
+  "name": "aiteam",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AITeam: Claude Code subagent team, plus a local web app to run it outside Claude Code.",
+  "scripts": {
+    "start": "node app/server/index.js",
+    "test": "node --test",
+    "build:plugin": "node scripts/build-plugin.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest",
+    "@anthropic-ai/sdk": "latest",
+    "@modelcontextprotocol/sdk": "latest",
+    "express": "latest",
+    "zod": "^4.0.0"
+  }
+}

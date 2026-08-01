@@ -1,0 +1,14 @@
+{
+  "name": "aiteam-marketplace",
+  "owner": {
+    "name": "Evangelos Karachristos",
+    "email": "vageliskarac@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "aiteam",
+      "source": "./",
+      "description": "18 Claude Code subagents (CEO, CTO, CPO, CFO, Business Analyst, Product Owner, Dev Lead, Developer, QA Engineer, DevOps Engineer, Security Engineer, Designer, Support Engineer, Technical Writer, Documentation Engineer, Sales Engineer, Customer Success, Data Analyst) that run a software project — and the business around it — end to end."
+    }
+  ]
+}

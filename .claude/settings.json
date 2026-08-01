@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.npmjs.com)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8879 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path })",
+      "Bash(node --test)",
+      "Bash(node -e ' *)",
+      "Bash(node \"C:/Users/VE831~1.KAR/AppData/Local/Temp/claude/c--Users-v-karachristos-source-repos-AITeam/595d8a96-1fb1-4dd2-a993-6bf48be178ab/scratchpad/balance.js\")",
+      "Bash(npm install *)",
+      "Bash(curl -sf http://localhost:8877 -o /dev/null)",
+      "Read(//tmp/**)",
+      "Bash(curl -s http://localhost:8877/)",
+      "Bash(curl -s http://localhost:8877/api/config)",
+      "Bash(curl -s http://localhost:8877/api/projects)",
+      "Bash(netstat -ano)",
+      "Bash(grep -iE \"ghp_|github_pat|token.{0,20}=.{0,5}['\\\\\"][a-zA-Z0-9]{20,}|secret|api[_-]?key\")",
+      "Bash(echo \"exit:$?\")",
+      "Bash(git add *)"
+    ]
+  }
+}

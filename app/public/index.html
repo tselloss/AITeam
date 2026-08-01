@@ -1,0 +1,1371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AITeam Runner — Hire Robots, Skip Payroll</title>
+<script>
+  // Applied before first paint so switching looks doesn't flash the default theme on reload.
+  (function () {
+    var saved = localStorage.getItem('aiteam-ui-theme');
+    if (saved && saved !== 'classic') document.documentElement.dataset.uiTheme = saved;
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --violet: #7c3aed;
+    --violet-hover: #6d28d9;
+    --teal: #0d9488;
+    --teal-hover: #0f766e;
+    --amber: #d97706;
+    --amber-hover: #b45309;
+    --success: #16a34a;
+    --error: #dc2626;
+    --handoff: #db2777;
+    --ink: #fff;
+    --blue: #2563eb;
+    --surface: Canvas;
+    --surface-ink: CanvasText;
+    --font-display: system-ui, sans-serif;
+    --font-body: system-ui, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    --radius-card: 8px;
+    --radius-btn: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --violet: #a78bfa;
+      --violet-hover: #8b5cf6;
+      --teal: #2dd4bf;
+      --teal-hover: #14b8a6;
+      --amber: #fbbf24;
+      --amber-hover: #f59e0b;
+      --success: #4ade80;
+      --error: #f87171;
+      --handoff: #f472b6;
+      --ink: #1a1a1a;
+      --blue: #60a5fa;
+    }
+  }
+
+  /* ---------- Alternate looks (Settings → Look) ---------- */
+  /* --violet/--teal/--amber etc. are reused as slot names, not literal colors —
+     e.g. --violet is the "brand/interactive" slot and is a red in the ledger theme. */
+  :root[data-ui-theme="ledger"] {
+    color-scheme: light;
+    --violet: #B23A2E; --violet-hover: #9c3226;
+    --teal: #3F6B4A; --teal-hover: #375f41;
+    --amber: #A8752A; --amber-hover: #93641f;
+    --success: #3F6B4A; --error: #B23A2E; --handoff: #A8752A;
+    --ink: #F6EEE1; --blue: #6B5638;
+    --surface: #EDE6D6; --surface-ink: #2B2620;
+    --font-display: Rockwell, "Roboto Slab", "Sitka Text", Georgia, serif;
+    --font-body: Iowan, "Sitka Text", Georgia, "Times New Roman", serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+    --radius-card: 2px; --radius-btn: 2px;
+  }
+  :root[data-ui-theme="terminal"] {
+    color-scheme: dark;
+    --violet: #E8B24D; --violet-hover: #d49b34;
+    --teal: #8FBF6A; --teal-hover: #79ab55;
+    --amber: #D99A3D; --amber-hover: #c2842c;
+    --success: #8FBF6A; --error: #C2564A; --handoff: #E8B24D;
+    --ink: #1B1815; --blue: #E8B24D;
+    --surface: #1B1815; --surface-ink: #E9DFC8;
+    --font-display: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    --font-body: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace;
+    --radius-card: 3px; --radius-btn: 2px;
+  }
+  :root[data-ui-theme="frontdesk"] {
+    color-scheme: light;
+    --violet: #2F5D8A; --violet-hover: #294f75;
+    --teal: #3F7D53; --teal-hover: #366c48;
+    --amber: #B8862E; --amber-hover: #a37527;
+    --success: #3F7D53; --error: #B0483B; --handoff: #2F5D8A;
+    --ink: #fff; --blue: #2F5D8A;
+    --surface: #EDEFF2; --surface-ink: #262A31;
+    --font-display: "Avenir Next", "Century Gothic", "Segoe UI", ui-sans-serif, sans-serif;
+    --font-body: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", monospace;
+    --radius-card: 6px; --radius-btn: 6px;
+  }
+  :root[data-ui-theme="terminal"] body { background-image: repeating-linear-gradient(180deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 3px); }
+  :root[data-ui-theme="terminal"] .brand h1::after {
+    content: "_"; margin-left: 0.15em; color: var(--violet); animation: ui-theme-blink 1s steps(1) infinite;
+  }
+  @keyframes ui-theme-blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-ui-theme="terminal"] .brand h1::after { animation: none; }
+  }
+  :root[data-ui-theme="frontdesk"] .project-card { border-radius: 0 var(--radius-card) var(--radius-card) var(--radius-card); }
+  * { box-sizing: border-box; }
+  body {
+    font-family: var(--font-body);
+    color: var(--surface-ink);
+    margin: 0;
+    line-height: 1.5;
+  }
+  a { color: var(--violet); }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    padding: 0.85rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  }
+  .brand h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    background: linear-gradient(90deg, var(--violet), var(--teal));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+  }
+  .brand .tagline {
+    margin: 0.15rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.7;
+    max-width: 60ch;
+  }
+  .topbar-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+  .banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 1.5rem;
+    background: color-mix(in srgb, var(--amber) 14%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+    font-size: 0.9rem;
+  }
+
+  /* ---------- Layout ---------- */
+  .dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem;
+  }
+  .dashboard section {
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    border-left: 4px solid var(--section-accent, currentColor);
+    border-radius: var(--radius-card);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    background: color-mix(in srgb, var(--surface) 96%, var(--section-accent, currentColor) 4%);
+  }
+  #projectsSection { --section-accent: var(--blue); }
+  #runsSection { --section-accent: var(--amber); }
+  .section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  h2 { margin: 0; font-family: var(--font-display); font-size: 1.05rem; color: var(--section-accent, inherit); }
+  h2 small { font-weight: normal; opacity: 0.6; font-size: 0.85rem; color: inherit; }
+  label { display: block; margin: 0.5rem 0; }
+  label small { font-weight: normal; opacity: 0.6; }
+
+  /* ---------- Form controls ---------- */
+  input[type="text"], input[type="password"], textarea, select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    margin-top: 0.25rem;
+    border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-radius: 4px;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+    color: inherit;
+  }
+  select { color-scheme: light dark; }
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+    outline: 2px solid var(--section-accent, var(--violet));
+    outline-offset: 1px;
+  }
+  fieldset { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 6px; }
+  .input-with-action { display: flex; gap: 0.4rem; margin-top: 0.25rem; }
+  .input-with-action input { margin-top: 0; }
+
+  button {
+    padding: 0.45rem 1.1rem;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    border-radius: 6px;
+    background: var(--section-accent, var(--violet));
+    color: var(--ink);
+    transition: filter 0.15s ease, transform 0.1s ease;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:active { filter: brightness(0.95); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; filter: none; }
+  button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+  .primary-btn {
+    background: linear-gradient(90deg, var(--teal), var(--violet));
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  .ghost-btn {
+    background: transparent;
+    color: inherit;
+    border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  }
+  .ghost-btn:hover { filter: none; background: color-mix(in srgb, currentColor 8%, transparent); }
+  .link-btn {
+    background: none;
+    color: inherit;
+    text-decoration: underline;
+    font-weight: 600;
+    padding: 0.15rem 0.3rem;
+  }
+  .link-btn:hover { filter: none; opacity: 0.8; }
+  .icon-btn {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    color: inherit;
+    padding: 0.4rem 0.6rem;
+    flex-shrink: 0;
+  }
+  .toolbar-btn {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    color: inherit;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.82rem;
+  }
+
+  /* ---------- Dialogs ---------- */
+  dialog {
+    border: none;
+    border-radius: var(--radius-card);
+    padding: 0;
+    background: var(--surface);
+    color: inherit;
+    width: min(560px, 92vw);
+    max-height: 85vh;
+    box-shadow: 0 10px 40px color-mix(in srgb, var(--surface-ink) 25%, transparent);
+  }
+  dialog::backdrop {
+    background: color-mix(in srgb, var(--surface-ink) 45%, transparent);
+    backdrop-filter: blur(1px);
+  }
+  dialog.dialog-settings { --section-accent: var(--violet); }
+  dialog.dialog-newproject { --section-accent: var(--teal); }
+  .dialog-body {
+    padding: 1.25rem 1.5rem 1.5rem;
+    overflow-y: auto;
+    max-height: 85vh;
+  }
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  .dialog-head h2 { border-left: 4px solid var(--section-accent, currentColor); padding-left: 0.6rem; }
+  .dialog-close {
+    background: none;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0.2rem 0.5rem;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .dialog-close:hover { filter: none; opacity: 1; }
+  .dialog-hint { opacity: 0.75; font-size: 0.9rem; margin-top: 0; }
+  #settingsStatus { display: block; margin-top: 0.5rem; opacity: 0.75; font-size: 0.9rem; }
+
+  /* ---------- Projects ---------- */
+  .project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.85rem;
+  }
+  .project-card {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: var(--radius-card);
+    padding: 0.75rem 0.9rem;
+    background: color-mix(in srgb, var(--surface) 97%, currentColor 3%);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--surface-ink) 8%, transparent);
+  }
+  .project-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+  .project-head strong { font-family: var(--font-display); font-size: 1rem; }
+  .project-head a { color: var(--section-accent); font-size: 0.85rem; overflow-wrap: anywhere; }
+  .project-status { margin-left: auto; font-size: 0.8rem; opacity: 0.85; white-space: nowrap; }
+  .project-status.running { color: var(--success); font-weight: 600; }
+  .project-status.error { color: var(--error); font-weight: 600; }
+  .last-brief { font-size: 0.85rem; opacity: 0.7; margin: 0.3rem 0; }
+  .continue-row { display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.4rem; }
+  .continue-row textarea { flex: 1; margin-top: 0; }
+  .continue-row .side { display: flex; flex-direction: column; gap: 0.3rem; align-items: stretch; }
+  .continue-row label { margin: 0; font-size: 0.8rem; white-space: nowrap; }
+  .continue-row button { margin-top: 0; white-space: nowrap; }
+  .empty-state {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    opacity: 0.85;
+  }
+  .empty-state p { margin: 0 0 0.75rem; opacity: 0.7; }
+
+  /* ---------- Runs ---------- */
+  .runs-toolbar { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
+  #runsCounts { opacity: 0.75; white-space: nowrap; }
+  .run-panel {
+    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: var(--radius-card);
+    margin-bottom: 0.75rem;
+    background: color-mix(in srgb, var(--surface) 97%, currentColor 3%);
+  }
+  .run-panel[data-state="finished"], .run-panel[data-state="error"] { opacity: 0.85; }
+  .run-panel summary {
+    cursor: pointer;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .run-panel summary span.summary-text { flex: 1; overflow-wrap: anywhere; }
+  .run-log {
+    max-height: 420px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    padding: 0.75rem;
+  }
+  #runsContainer:empty::after { content: 'No runs yet — start or continue a project above.'; opacity: 0.6; font-size: 0.9rem; }
+  .log-line { white-space: pre-wrap; padding: 0.15rem 0; }
+  .log-line.role { font-weight: 600; margin-top: 0.5rem; color: var(--teal); }
+  .log-line.handoff { color: var(--handoff); opacity: 0.9; }
+  .log-line.warning { color: var(--amber); }
+  .log-line.error { color: var(--error); font-weight: 600; }
+  .log-line.finished { color: var(--success); font-weight: 600; }
+  .log-line.critical { color: var(--error); font-weight: 600; }
+  .tag {
+    display: inline-block;
+    border: 1px solid var(--handoff);
+    color: var(--handoff);
+    border-radius: 999px;
+    padding: 0 0.4rem;
+    font-size: 0.75em;
+    margin-left: 0.35rem;
+    white-space: nowrap;
+  }
+  .log-time {
+    opacity: 0.5;
+    font-size: 0.75rem;
+    margin-right: 0.5rem;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .log-line.text {
+    white-space: normal;
+    border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin: 0.4rem 0;
+    background: color-mix(in srgb, currentColor 3%, transparent);
+  }
+  .log-card-head { display: flex; gap: 0.4rem; align-items: baseline; margin-bottom: 0.35rem; }
+  .role-badge { font-family: var(--font-display); font-weight: 600; color: var(--teal); }
+  .md-body { font-family: var(--font-body); line-height: 1.45; }
+  .md-body > :first-child { margin-top: 0; }
+  .md-body > :last-child { margin-bottom: 0; }
+  .md-body h1, .md-body h2, .md-body h3, .md-body h4, .md-body h5, .md-body h6 {
+    margin: 0.6rem 0 0.3rem; line-height: 1.25;
+  }
+  .md-body h1 { font-size: 1.15rem; }
+  .md-body h2 { font-size: 1.05rem; }
+  .md-body h3, .md-body h4, .md-body h5, .md-body h6 { font-size: 1rem; }
+  .md-body p { margin: 0.4rem 0; }
+  .md-body ul, .md-body ol { margin: 0.3rem 0; padding-left: 1.4rem; }
+  .md-body li { margin: 0.15rem 0; }
+  .md-body code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  .md-body pre.md-code {
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+  }
+  .md-body pre.md-code code { background: none; padding: 0; font-size: 0.8em; }
+  .md-body blockquote {
+    margin: 0.4rem 0;
+    padding-left: 0.75rem;
+    border-left: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+    opacity: 0.85;
+  }
+  .md-body a { color: var(--violet); }
+  .approval-card {
+    border: 1px solid var(--amber);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+    background: color-mix(in srgb, var(--amber) 8%, transparent);
+  }
+  .approval-card pre { white-space: pre-wrap; overflow-x: auto; }
+  .approval-card.resolved { opacity: 0.6; }
+  .approval-card button[data-decision="allow"] { background: var(--success); color: var(--ink); }
+  .approval-card button[data-decision="deny"] { background: var(--error); color: var(--ink); }
+  .stop-run-btn {
+    background: var(--error);
+    color: var(--ink);
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .retry-run-btn {
+    background: var(--teal);
+    color: var(--ink);
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .build-run-btn {
+    background: var(--blue);
+    color: #fff;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .build-panel {
+    border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  .build-panel .build-status { font-weight: 600; }
+  .build-panel .build-open {
+    display: inline-block;
+    margin-left: 0.5rem;
+    background: var(--success);
+    color: var(--ink);
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+  .build-panel pre.build-log {
+    max-height: 180px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin: 0.4rem 0 0;
+    white-space: pre-wrap;
+  }
+
+  @media (max-width: 640px) {
+    .topbar { padding: 0.75rem 1rem; }
+    .dashboard { padding: 1rem; }
+    .continue-row { flex-direction: column; }
+    .continue-row .side { flex-direction: row; align-items: center; justify-content: space-between; }
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>AITeam Runner 🤖💼</h1>
+      <p class="tagline">Runs the <a href="https://github.com/tselloss/AITeam" target="_blank" rel="noopener noreferrer">AITeam</a> roster on your own Claude subscription — via the Claude Agent SDK, reusing whatever <code>claude login</code> session is active on this machine — and pushes the result to GitHub.</p>
+    </div>
+    <div class="topbar-actions">
+      <button type="button" id="openSettings" class="ghost-btn">⚙️ Settings</button>
+      <button type="button" id="openNewProject" class="primary-btn">🚀 New Project</button>
+    </div>
+  </header>
+
+  <div id="noTokenBanner" class="banner" hidden>
+    <span>⚠️ No GitHub token saved — the interns need one before they can push code anywhere.</span>
+    <button type="button" id="bannerAddToken" class="link-btn">Add one now →</button>
+  </div>
+
+  <main class="dashboard">
+    <section id="projectsSection">
+      <div class="section-head">
+        <h2>Projects <small>click Continue to give one more work</small></h2>
+      </div>
+      <div id="projectList" class="project-grid"></div>
+      <div id="emptyProjects" class="empty-state" hidden>
+        <p>No projects yet — hire your first batch of interns.</p>
+        <button type="button" id="emptyNewProject" class="primary-btn">🚀 Start your first project</button>
+      </div>
+    </section>
+
+    <section id="runsSection">
+      <div class="section-head">
+        <h2>Active &amp; recent runs <small>watch the robots argue in real time — several at once, if you're brave</small></h2>
+        <div class="runs-toolbar" id="runsToolbar" hidden>
+          <span id="runsCounts"></span>
+          <button type="button" id="collapseFinishedBtn" class="toolbar-btn">Collapse finished</button>
+          <button type="button" id="clearFinishedBtn" class="toolbar-btn">Clear finished</button>
+        </div>
+      </div>
+      <div id="runsContainer"></div>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog" class="dialog-settings" aria-labelledby="settingsDialogTitle">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="settingsDialogTitle">Settings <small>(the "please don't leak my keys" section)</small></h2>
+        <button type="button" class="dialog-close" id="closeSettingsDialog" aria-label="Close settings">✕</button>
+      </div>
+      <p class="dialog-hint">No Anthropic API key needed — runs authenticate as whichever account is logged into Claude Code on this machine. Not logged in? Run <code>claude login</code> in a terminal first.</p>
+      <label>Look <small>— pick how the dashboard is dressed</small>
+        <select id="uiTheme">
+          <option value="classic">Classic (violet/teal)</option>
+          <option value="ledger">The Ledger (staffing-agency paper)</option>
+          <option value="terminal">Night Shift Console (amber terminal)</option>
+          <option value="frontdesk">Front Desk (steel-blue folders)</option>
+        </select>
+      </label>
+      <label>GitHub personal access token (repo scope) <small>— so the interns can push code somewhere</small>
+        <div class="input-with-action">
+          <input type="password" id="githubToken" placeholder="ghp_..." autocomplete="off" />
+          <button type="button" id="toggleTokenVisibility" class="icon-btn" aria-pressed="false" aria-label="Show token">👁️</button>
+        </div>
+      </label>
+      <button type="button" id="saveSettings">Save (pinky promise not to peek)</button>
+      <span id="settingsStatus"></span>
+    </div>
+  </dialog>
+
+  <dialog id="newProjectDialog" class="dialog-newproject" aria-labelledby="newProjectDialogTitle">
+    <div class="dialog-body">
+      <div class="dialog-head">
+        <h2 id="newProjectDialogTitle">Start a brand-new project <small>(new hires incoming)</small></h2>
+        <button type="button" class="dialog-close" id="closeNewProjectDialog" aria-label="Close new project form">✕</button>
+      </div>
+      <label>Project brief <small>— hand it to the CEO like you mean it</small>
+        <textarea id="brief" rows="4" required placeholder="Describe what you want built... (be nice, they're doing their best)"></textarea>
+      </label>
+      <fieldset>
+        <legend>Target repo</legend>
+        <label><input type="radio" name="targetMode" value="create" checked /> Create a new repo (birth a codebase)</label>
+        <input type="text" id="newRepoName" placeholder="repo-name" />
+        <label><input type="checkbox" id="isPrivate" checked /> Private (witness protection for your code)</label>
+        <label><input type="radio" name="targetMode" value="clone" /> Use an existing repo (inherit someone else's mess)</label>
+        <select id="repoSelect"><option value="">Save a GitHub token above, then pick a repo…</option></select>
+        <select id="branchSelect" disabled><option value="">Pick a repo first…</option></select>
+      </fieldset>
+      <label><input type="checkbox" id="autonomousMode" /> Autonomous mode <small>— never pause for my approval, including critical-severity findings; just use your best judgment and keep going. Also survives usage-limit pauses on its own (see the log).</small></label>
+      <button type="button" id="runButton" class="primary-btn">🚀 Assemble the Team</button>
+    </div>
+  </dialog>
+
+<script>
+  const settingsStatus = document.getElementById('settingsStatus');
+  const repoSelect = document.getElementById('repoSelect');
+  const branchSelect = document.getElementById('branchSelect');
+  const noTokenBanner = document.getElementById('noTokenBanner');
+
+  const uiThemeSelect = document.getElementById('uiTheme');
+  uiThemeSelect.value = localStorage.getItem('aiteam-ui-theme') || 'classic';
+  uiThemeSelect.addEventListener('change', () => {
+    const theme = uiThemeSelect.value;
+    if (theme === 'classic') delete document.documentElement.dataset.uiTheme;
+    else document.documentElement.dataset.uiTheme = theme;
+    localStorage.setItem('aiteam-ui-theme', theme);
+  });
+
+  async function loadSettingsStatus() {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    settingsStatus.textContent = `GitHub token: ${data.hasGithubToken ? 'saved' : 'not set'}`;
+    noTokenBanner.hidden = Boolean(data.hasGithubToken);
+    if (data.hasGithubToken) loadRepoOptions();
+  }
+  loadSettingsStatus();
+
+  async function loadRepoOptions() {
+    repoSelect.innerHTML = '<option value="">Loading your repos…</option>';
+    try {
+      const res = await fetch('/api/github/repos');
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not load repos');
+      const repos = await res.json();
+      repoSelect.innerHTML = '';
+      if (!repos.length) {
+        repoSelect.innerHTML = '<option value="">No repos found for this token</option>';
+        return;
+      }
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Choose a repo…';
+      repoSelect.appendChild(placeholder);
+      for (const repo of repos) {
+        const option = document.createElement('option');
+        option.value = repo.htmlUrl;
+        option.dataset.fullName = repo.fullName;
+        option.dataset.defaultBranch = repo.defaultBranch;
+        option.textContent = `${repo.fullName}${repo.private ? ' 🔒' : ''}`;
+        repoSelect.appendChild(option);
+      }
+    } catch (error) {
+      repoSelect.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+    }
+  }
+
+  repoSelect.addEventListener('change', () => loadBranchOptions());
+
+  async function loadBranchOptions() {
+    const selected = repoSelect.options[repoSelect.selectedIndex];
+    const fullName = selected?.dataset.fullName;
+    if (!fullName) {
+      branchSelect.innerHTML = '<option value="">Pick a repo first…</option>';
+      branchSelect.disabled = true;
+      return;
+    }
+    const [owner, repo] = fullName.split('/');
+    const defaultBranch = selected.dataset.defaultBranch;
+    branchSelect.disabled = false;
+    branchSelect.innerHTML = '<option value="">Loading branches…</option>';
+    try {
+      const res = await fetch(`/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not load branches');
+      const branches = await res.json();
+      branchSelect.innerHTML = '';
+      if (!branches.length) {
+        branchSelect.innerHTML = '<option value="">No branches found</option>';
+        return;
+      }
+      for (const branch of branches) {
+        const option = document.createElement('option');
+        option.value = branch;
+        option.textContent = branch === defaultBranch ? `${branch} (default)` : branch;
+        branchSelect.appendChild(option);
+      }
+      branchSelect.value = defaultBranch && branches.includes(defaultBranch) ? defaultBranch : branches[0];
+    } catch (error) {
+      branchSelect.innerHTML = `<option value="">${escapeHtml(error.message)}</option>`;
+      branchSelect.disabled = true;
+    }
+  }
+
+  document.getElementById('saveSettings').addEventListener('click', async () => {
+    const githubToken = document.getElementById('githubToken').value;
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ githubToken }),
+    });
+    document.getElementById('githubToken').value = '';
+    await loadSettingsStatus();
+  });
+
+  document.getElementById('toggleTokenVisibility').addEventListener('click', (event) => {
+    const input = document.getElementById('githubToken');
+    const btn = event.currentTarget;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.setAttribute('aria-pressed', String(show));
+    btn.setAttribute('aria-label', show ? 'Hide token' : 'Show token');
+    btn.textContent = show ? '🙈' : '👁️';
+  });
+
+  // ---------- Dialogs ----------
+  const settingsDialog = document.getElementById('settingsDialog');
+  const newProjectDialog = document.getElementById('newProjectDialog');
+  function wireDialogBackdropClose(dialog) {
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+  }
+  wireDialogBackdropClose(settingsDialog);
+  wireDialogBackdropClose(newProjectDialog);
+  document.getElementById('openSettings').addEventListener('click', () => settingsDialog.showModal());
+  document.getElementById('closeSettingsDialog').addEventListener('click', () => settingsDialog.close());
+  document.getElementById('bannerAddToken').addEventListener('click', () => settingsDialog.showModal());
+  function openNewProjectDialog() {
+    newProjectDialog.showModal();
+    document.getElementById('brief').focus();
+  }
+  document.getElementById('openNewProject').addEventListener('click', openNewProjectDialog);
+  document.getElementById('emptyNewProject').addEventListener('click', openNewProjectDialog);
+  document.getElementById('closeNewProjectDialog').addEventListener('click', () => newProjectDialog.close());
+
+  const runsContainer = document.getElementById('runsContainer');
+  const runsToolbar = document.getElementById('runsToolbar');
+  const runsCounts = document.getElementById('runsCounts');
+  const collapseFinishedBtn = document.getElementById('collapseFinishedBtn');
+  const clearFinishedBtn = document.getElementById('clearFinishedBtn');
+  const attachedRuns = new Set();
+
+  function updateRunsToolbar() {
+    const panels = [...runsContainer.querySelectorAll('.run-panel')];
+    const finished = panels.filter((panel) => panel.dataset.state && panel.dataset.state !== 'active');
+    runsToolbar.hidden = panels.length === 0;
+    runsCounts.textContent = `${panels.length - finished.length} active · ${finished.length} finished`;
+    collapseFinishedBtn.disabled = finished.length === 0;
+    clearFinishedBtn.disabled = finished.length === 0;
+  }
+  collapseFinishedBtn.addEventListener('click', () => {
+    runsContainer.querySelectorAll('.run-panel').forEach((panel) => {
+      if (panel.dataset.state && panel.dataset.state !== 'active') panel.open = false;
+    });
+  });
+  clearFinishedBtn.addEventListener('click', () => {
+    runsContainer.querySelectorAll('.run-panel').forEach((panel) => {
+      if (panel.dataset.state && panel.dataset.state !== 'active') panel.remove();
+    });
+    updateRunsToolbar();
+  });
+
+  const ROLE_ICONS = {
+    ceo: '🧑‍💼', cto: '🛠️', cpo: '🧭', cfo: '💰', 'business-analyst': '🧮',
+    'product-owner': '📋', 'dev-lead': '🧑‍🏫', dev: '👩‍💻',
+    'qa-engineer': '🔍', 'devops-engineer': '🚀', 'security-engineer': '🛡️',
+    designer: '🎨', 'support-engineer': '🎧', 'tech-writer': '✍️', 'docs-engineer': '📚',
+  };
+  function roleIcon(role) { return ROLE_ICONS[role] || '🤖'; }
+
+  function timestamp() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // Minimal, dependency-free markdown -> HTML for rendering agent replies.
+  // Escapes first, then layers on markup, so raw agent text can never inject
+  // arbitrary tags/attributes (links are restricted to http(s) for the same reason).
+  function renderMarkdown(src) {
+    let text = escapeHtml(src).replace(/\r\n/g, '\n');
+
+    const codeBlocks = [];
+    text = text.replace(/```[\w-]*\n([\s\S]*?)```/g, (_, code) => {
+      codeBlocks.push(`<pre class="md-code"><code>${code.replace(/\n$/, '')}</code></pre>`);
+      return `CODEBLOCK${codeBlocks.length - 1}MARK`;
+    });
+
+    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    text = text.replace(/^(#{1,6})\s+(.*)$/gm, (_, hashes, content) => `<h${hashes.length}>${content}</h${hashes.length}>`);
+    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    text = text.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
+
+    const lines = text.split('\n');
+    const out = [];
+    let listBuffer = [];
+    let listType = null;
+    const flushList = () => {
+      if (listBuffer.length) out.push(`<${listType}>${listBuffer.join('')}</${listType}>`);
+      listBuffer = [];
+      listType = null;
+    };
+    for (const line of lines) {
+      const ul = /^[-*]\s+(.*)$/.exec(line);
+      const ol = /^\d+\.\s+(.*)$/.exec(line);
+      if (ul) {
+        if (listType && listType !== 'ul') flushList();
+        listType = 'ul';
+        listBuffer.push(`<li>${ul[1]}</li>`);
+      } else if (ol) {
+        if (listType && listType !== 'ol') flushList();
+        listType = 'ol';
+        listBuffer.push(`<li>${ol[1]}</li>`);
+      } else {
+        flushList();
+        out.push(line);
+      }
+    }
+    flushList();
+    text = out.join('\n');
+
+    const blockTags = /^<(h[1-6]|ul|ol|blockquote|pre)/;
+    const codePlaceholder = /^CODEBLOCK\d+MARK$/;
+    text = text.split(/\n{2,}/).map((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return '';
+      if (blockTags.test(trimmed) || codePlaceholder.test(trimmed)) return trimmed;
+      return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
+    }).join('\n');
+
+    return text.replace(/CODEBLOCK(\d+)MARK/g, (_, i) => codeBlocks[Number(i)]);
+  }
+
+  function areaSeverityBadges(event) {
+    const badges = [];
+    if (event.area) badges.push(`<span class="tag">${escapeHtml(event.area)}</span>`);
+    if (event.severity) badges.push(`<span class="tag">${escapeHtml(event.severity)}</span>`);
+    return badges.join(' ');
+  }
+
+  // Builds a self-contained set of log/approval renderers bound to one run's
+  // own panel — this is what lets several runs stream into the page at once
+  // without stepping on each other's DOM or approval endpoint.
+  function makeRunHandlers(runId, logOutput, summary, label, stopButton, retryButton, buildButton, meta, setState, panel) {
+    function retireButton(button, text) {
+      button.disabled = true;
+      button.textContent = text;
+      button.hidden = true;
+    }
+
+    function logLine(cls, text) {
+      const div = document.createElement('div');
+      div.className = `log-line ${cls}`;
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = timestamp();
+      const body = document.createElement('span');
+      body.textContent = text;
+      div.appendChild(time);
+      div.appendChild(body);
+      logOutput.appendChild(div);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function logHandoffLine(event) {
+      const div = document.createElement('div');
+      div.className = 'log-line handoff';
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = timestamp();
+      const body = document.createElement('span');
+      body.innerHTML = `${roleIcon(event.from)} → ${roleIcon(event.to)} ${escapeHtml(event.from)} hands off to ${escapeHtml(event.to)}: ${escapeHtml(event.task)} ${areaSeverityBadges(event)}`;
+      div.appendChild(time);
+      div.appendChild(body);
+      logOutput.appendChild(div);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function logMarkdownCard(role, mdText) {
+      const card = document.createElement('div');
+      card.className = 'log-line text';
+      card.innerHTML =
+        `<div class="log-card-head"><span class="log-time">${timestamp()}</span>` +
+        `<span class="role-badge">${roleIcon(role)} ${escapeHtml(role)}</span></div>` +
+        `<div class="md-body">${renderMarkdown(mdText)}</div>`;
+      logOutput.appendChild(card);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    async function resolveApproval(approvalId, approved) {
+      const card = logOutput.querySelector(`#approval-${approvalId}`);
+      if (card) card.classList.add('resolved');
+      await fetch(`/api/runs/${runId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalId, approved }),
+      });
+    }
+
+    function renderApprovalCard(event) {
+      const card = document.createElement('div');
+      card.className = 'approval-card';
+      card.id = `approval-${event.approvalId}`;
+      const isCritical = event.toolName === 'CriticalSeverityHandoff';
+      const headline = isCritical
+        ? `<div>🚨 <strong>${escapeHtml(event.role)}</strong> flagged a <strong>critical</strong>-severity handoff to <strong>${escapeHtml(event.input.to)}</strong> — acknowledge before the run continues</div>`
+        : `<div><strong>${escapeHtml(event.role)}</strong> would like your permission to run <code>${escapeHtml(event.toolName)}</code> (please read this, don't just click yes)</div>`;
+      card.innerHTML = `
+        ${headline}
+        <pre>${escapeHtml(JSON.stringify(event.input, null, 2))}</pre>
+        <button data-decision="allow">${isCritical ? '✅ Acknowledge & continue' : '✅ Approve'}</button>
+        <button data-decision="deny">${isCritical ? '🛑 Stop this run' : '🛑 Deny'}</button>
+      `;
+      card.querySelector('[data-decision="allow"]').addEventListener('click', () => resolveApproval(event.approvalId, true));
+      card.querySelector('[data-decision="deny"]').addEventListener('click', () => resolveApproval(event.approvalId, false));
+      logOutput.appendChild(card);
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    function handleEvent(event) {
+      switch (event.type) {
+        case 'workspace_preparing':
+          logLine('info', '🧹 Clearing a desk for the new hires...');
+          break;
+        case 'workspace_ready':
+          logLine('info', `🏢 Office is open: ${event.repo.htmlUrl} (branch: ${event.repo.branch})`);
+          summary.textContent = `${label} — 🏢 ${event.repo.htmlUrl}`;
+          break;
+        case 'role_start':
+          logLine('role', `${roleIcon(event.role)} ▶ ${event.role} clocks in: ${event.task}`);
+          summary.textContent = `${label} — ${roleIcon(event.role)} ${event.role} working…`;
+          break;
+        case 'auth': {
+          const source = event.apiKeySource === 'oauth' ? 'your Claude subscription (Claude Code login)' : event.apiKeySource;
+          logLine('info', `🔑 ${event.role} authenticated via ${source} — model ${event.model}`);
+          break;
+        }
+        case 'text':
+          logMarkdownCard(event.role, event.text);
+          break;
+        case 'handoff':
+          logHandoffLine(event);
+          break;
+        case 'critical_handoff':
+          logLine('critical', `🚨 CRITICAL — ${event.from} → ${event.to}: ${event.task}${event.area ? ` [${event.area}]` : ''} — waiting for your go-ahead`);
+          break;
+        case 'role_end':
+          logLine('role', `${roleIcon(event.role)} ✔ ${event.role} clocks out`);
+          break;
+        case 'approval_requested':
+          renderApprovalCard(event);
+          summary.textContent = `${label} — ⏳ waiting on your approval`;
+          break;
+        case 'approval_resolved': {
+          const card = logOutput.querySelector(`#approval-${event.approvalId}`);
+          if (card) card.classList.add('resolved');
+          break;
+        }
+        case 'auto_approved':
+          logLine('info', `🤖 ${event.role} auto-approved its own ${event.toolName} call (autonomous mode) — no one home to ask`);
+          break;
+        case 'rate_limited': {
+          const when = new Date(event.resumeAt).toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+          const why = event.rateLimitType ? `usage limit (${event.rateLimitType})` : `a transient error (${event.reason})`;
+          logLine('warning', `⏸ ${event.role} paused — hit ${why}. Will resume automatically around ${when}, no action needed.`);
+          summary.textContent = `${label} — ⏸ paused, resuming ~${when}`;
+          break;
+        }
+        case 'resumed':
+          logLine('info', `▶ ${event.role} resumed — capacity is back, continuing where it left off.`);
+          break;
+        case 'rate_limit_warning':
+          logLine('warning', `⚠ ${event.role} is approaching a usage limit (${event.rateLimitType}${event.utilization != null ? `, ${event.utilization}% used` : ''})`);
+          break;
+        case 'warning':
+          logLine('warning', `⚠ [${event.role}] ${event.text}`);
+          break;
+        case 'stop_requested':
+          logLine('warning', '🛑 Stop requested — winding down…');
+          summary.textContent = `${label} — 🛑 stopping…`;
+          stopButton.disabled = true;
+          stopButton.textContent = 'Stopping…';
+          break;
+        case 'error':
+          logLine('error', event.aborted ? `🛑 ${event.message}` : `✖ ${event.message}`);
+          summary.textContent = `${label} — ${event.aborted ? '🛑 stopped' : '✖ error'}`;
+          retireButton(stopButton, 'Stopped');
+          if (meta?.brief) retryButton.hidden = false;
+          if (meta?.projectId) buildButton.hidden = false;
+          setState('error');
+          loadProjects();
+          break;
+        case 'finished':
+          logLine('finished', `🎉 Ship it! Pushed to ${event.repo.htmlUrl}${event.push.pushed ? '' : ' (nothing new to commit — everyone was just vibing)'}`);
+          summary.textContent = `${label} — 🎉 finished`;
+          retireButton(stopButton, 'Done');
+          retireButton(retryButton, 'Done');
+          if (meta?.projectId) buildButton.hidden = false;
+          setState('finished');
+          loadProjects();
+          // A finished run's outcome is already captured by the project
+          // card's "✅ idle" status and its on-disk log — leave the final
+          // line on screen briefly, then drop the tab so completed runs
+          // don't pile up next to the ones still in progress or needing
+          // attention.
+          attachedRuns.delete(runId);
+          setTimeout(() => panel.remove(), 4000);
+          break;
+        default:
+          logLine('info', JSON.stringify(event));
+      }
+    }
+
+    // `permanent`: the browser's own retry loop gave up (readyState CLOSED),
+    // which for EventSource only happens on a non-200 response — i.e. the
+    // server returned 404 because it no longer knows this runId, almost
+    // always because the server process restarted. A plain network drop
+    // instead leaves EventSource to silently retry the same URL on its own.
+    function handleConnectionLost(permanent) {
+      if (!permanent) {
+        logLine('warning', '🔌 Connection interrupted — reconnecting…');
+        return;
+      }
+      logLine('warning', '🔌 Lost the live connection to this run (the server likely restarted). Refreshing status…');
+      summary.textContent = `${label} — 🔌 connection lost`;
+      retireButton(stopButton, 'Disconnected');
+      if (meta?.brief) retryButton.hidden = false;
+      loadProjects();
+    }
+
+    return { handleEvent, handleConnectionLost };
+  }
+
+  // Opens (or reopens, after a page reload) the live SSE stream for one run
+  // and gives it its own panel — safe to call more than once for the same
+  // runId, since a run already showing on the page is never re-attached.
+  // `meta` ({ projectId, brief, autonomous }) is what a Retry click on this
+  // panel resubmits — absent for runs the page can't retry (there always is
+  // one in practice; every run is tied to a project by the time it starts).
+  function attachRun(runId, label, meta) {
+    if (attachedRuns.has(runId)) return;
+    attachedRuns.add(runId);
+
+    const details = document.createElement('details');
+    details.className = 'run-panel';
+    details.dataset.state = 'active';
+    details.open = true;
+    const summary = document.createElement('summary');
+    const summaryText = document.createElement('span');
+    summaryText.className = 'summary-text';
+    summaryText.textContent = `${label} — starting…`;
+    const stopButton = document.createElement('button');
+    stopButton.type = 'button';
+    stopButton.className = 'stop-run-btn';
+    stopButton.textContent = '🛑 Stop';
+    stopButton.title = 'Stop this run now — e.g. the first prompt was wrong';
+    stopButton.addEventListener('click', async (event) => {
+      // Stop lives inside a <summary>; a plain click there would also
+      // toggle the <details> panel open/closed.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!confirm('Stop this run? Work in progress will be abandoned.')) return;
+      stopButton.disabled = true;
+      stopButton.textContent = 'Stopping…';
+      try {
+        const res = await fetch(`/api/runs/${runId}/stop`, { method: 'POST' });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          alert(body.error || 'could not stop this run');
+          stopButton.disabled = false;
+          stopButton.textContent = '🛑 Stop';
+        }
+      } catch (error) {
+        alert('could not stop this run');
+        stopButton.disabled = false;
+        stopButton.textContent = '🛑 Stop';
+      }
+    });
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.className = 'retry-run-btn';
+    retryButton.textContent = '🔁 Retry';
+    retryButton.title = 'Run the exact same brief again';
+    retryButton.hidden = true;
+    retryButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!meta?.projectId || !meta?.brief) return;
+      retryButton.disabled = true;
+      retryButton.textContent = 'Retrying…';
+      try {
+        const res = await fetch('/api/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: meta.projectId, brief: meta.brief, autonomous: Boolean(meta.autonomous) }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          alert(body.error || 'could not retry this run');
+          retryButton.disabled = false;
+          retryButton.textContent = '🔁 Retry';
+          return;
+        }
+        const { runId: newRunId } = await res.json();
+        retryButton.textContent = 'Retried ↓';
+        retryButton.disabled = true;
+        attachRun(newRunId, label, meta);
+        loadProjects();
+      } catch (error) {
+        alert('could not retry this run');
+        retryButton.disabled = false;
+        retryButton.textContent = '🔁 Retry';
+      }
+    });
+    const buildButton = document.createElement('button');
+    buildButton.type = 'button';
+    buildButton.className = 'build-run-btn';
+    buildButton.textContent = '🛠️ Build & Run';
+    buildButton.title = "Install and start this run's local workspace, then open it in a new tab";
+    buildButton.hidden = true;
+
+    const buildPanel = document.createElement('div');
+    buildPanel.className = 'build-panel';
+    buildPanel.hidden = true;
+    buildPanel.innerHTML =
+      '<span class="build-status"></span>' +
+      '<a class="build-open" href="#" target="_blank" rel="noopener noreferrer" hidden>Open app ↗</a>' +
+      '<pre class="build-log"></pre>';
+    const buildStatusEl = buildPanel.querySelector('.build-status');
+    const buildOpenEl = buildPanel.querySelector('.build-open');
+    const buildLogEl = buildPanel.querySelector('.build-log');
+
+    const BUILD_STATUS_LABEL = {
+      starting: '⏳ starting…',
+      installing: '📦 installing dependencies…',
+      booting: '🚀 starting the app…',
+      ready: '✅ running',
+      running_no_url: '❓ running, but no URL detected',
+      error: '✖ failed',
+    };
+    let buildPollTimer = null;
+    function stopBuildPolling() {
+      if (buildPollTimer) { clearInterval(buildPollTimer); buildPollTimer = null; }
+    }
+    async function pollBuild() {
+      const res = await fetch(`/api/runs/${runId}/build`);
+      if (!res.ok) { stopBuildPolling(); return; }
+      const data = await res.json();
+      buildStatusEl.textContent = (BUILD_STATUS_LABEL[data.status] || data.status) + (data.message ? ` — ${data.message}` : '');
+      buildLogEl.textContent = data.log.join('\n');
+      buildLogEl.scrollTop = buildLogEl.scrollHeight;
+      buildOpenEl.hidden = !data.url;
+      if (data.url) buildOpenEl.href = data.url;
+      if (data.status === 'ready' || data.status === 'running_no_url') {
+        buildButton.disabled = false;
+        buildButton.textContent = '🛑 Stop app';
+      } else if (data.status === 'error') {
+        stopBuildPolling();
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Retry build';
+      }
+    }
+    buildButton.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (buildButton.textContent === '🛑 Stop app') {
+        stopBuildPolling();
+        buildButton.disabled = true;
+        await fetch(`/api/runs/${runId}/build/stop`, { method: 'POST' });
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Build & Run';
+        buildOpenEl.hidden = true;
+        buildStatusEl.textContent = 'stopped';
+        return;
+      }
+      if (!meta?.projectId) return;
+      buildButton.disabled = true;
+      buildButton.textContent = 'Starting…';
+      buildPanel.hidden = false;
+      buildStatusEl.textContent = '⏳ starting…';
+      buildLogEl.textContent = '';
+      buildOpenEl.hidden = true;
+      try {
+        const res = await fetch(`/api/runs/${runId}/build`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: meta.projectId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          buildStatusEl.textContent = body.error || 'could not start';
+          buildButton.disabled = false;
+          buildButton.textContent = '🛠️ Build & Run';
+          return;
+        }
+        buildButton.disabled = false;
+        buildButton.textContent = '🛑 Stop app';
+        stopBuildPolling();
+        buildPollTimer = setInterval(pollBuild, 1500);
+        pollBuild();
+      } catch (error) {
+        buildStatusEl.textContent = 'could not start';
+        buildButton.disabled = false;
+        buildButton.textContent = '🛠️ Build & Run';
+      }
+    });
+
+    summary.appendChild(summaryText);
+    summary.appendChild(buildButton);
+    summary.appendChild(retryButton);
+    summary.appendChild(stopButton);
+    const logOutput = document.createElement('div');
+    logOutput.className = 'run-log';
+    details.appendChild(summary);
+    details.appendChild(logOutput);
+    details.appendChild(buildPanel);
+    runsContainer.prepend(details);
+
+    function setState(state) {
+      details.dataset.state = state;
+      updateRunsToolbar();
+    }
+    updateRunsToolbar();
+
+    const { handleEvent, handleConnectionLost } = makeRunHandlers(runId, logOutput, summaryText, label, stopButton, retryButton, buildButton, meta, setState, details);
+    const source = new EventSource(`/api/runs/${runId}/events`);
+    source.onmessage = (message) => handleEvent(JSON.parse(message.data));
+    source.onerror = () => handleConnectionLost(source.readyState === EventSource.CLOSED);
+  }
+
+  function projectLabel(project) {
+    return project.repo?.htmlUrl?.split('/').slice(-2).join('/') || project.name || 'project';
+  }
+
+  function renderProjectCard(project) {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+
+    const repoUrl = project.repo?.htmlUrl || null;
+    const repoText = repoUrl || (project.target.mode === 'clone' ? project.target.repoUrl : `${project.target.name} (not created yet)`);
+    const lastRun = project.runs[0];
+    let statusCls = '';
+    let statusText = 'idle';
+    if (project.activeRunId) {
+      statusCls = 'running';
+      statusText = '🟢 running';
+    } else if (lastRun) {
+      if (lastRun.status === 'finished') statusText = '✅ idle';
+      else if (lastRun.status === 'error') { statusCls = 'error'; statusText = '❌ last run errored'; }
+      else if (lastRun.status === 'aborted') { statusCls = 'error'; statusText = '🛑 last run aborted'; }
+    } else {
+      statusText = '⚪ new';
+    }
+
+    const head = document.createElement('div');
+    head.className = 'project-head';
+    head.innerHTML =
+      `<strong>${escapeHtml(project.name)}</strong>` +
+      (repoUrl ? `<a href="${repoUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(repoText)}</a>` : `<span style="opacity:0.7;font-size:0.85rem;">${escapeHtml(repoText)}</span>`) +
+      `<span class="project-status ${statusCls}">${statusText}</span>`;
+    card.appendChild(head);
+
+    if (lastRun) {
+      const last = document.createElement('div');
+      last.className = 'last-brief';
+      last.textContent = `Last: ${lastRun.brief}`;
+      card.appendChild(last);
+    }
+
+    const row = document.createElement('div');
+    row.className = 'continue-row';
+    const textarea = document.createElement('textarea');
+    textarea.rows = 2;
+    textarea.required = true;
+    textarea.placeholder = "Continue this project — what's next?";
+    // A stopped run (hit a usage-limit safety cap, a non-retryable error, or
+    // was aborted) already has a natural next step: pick up where it left
+    // off. Pre-fill it so resuming is a single click, not a re-typed brief —
+    // the in-run rate-limit pause (orchestrator.js) already resumes itself
+    // without this; this covers the case where the whole run had to stop.
+    if (lastRun && (lastRun.status === 'error' || lastRun.status === 'aborted')) {
+      textarea.value = 'Continue';
+    }
+    const side = document.createElement('div');
+    side.className = 'side';
+    const autoLabel = document.createElement('label');
+    const autoCheckbox = document.createElement('input');
+    autoCheckbox.type = 'checkbox';
+    autoLabel.appendChild(autoCheckbox);
+    autoLabel.appendChild(document.createTextNode(' Autonomous'));
+    const button = document.createElement('button');
+    button.textContent = project.activeRunId ? 'Already running…' : '▶ Continue';
+    button.disabled = Boolean(project.activeRunId);
+    side.appendChild(autoLabel);
+    side.appendChild(button);
+    row.appendChild(textarea);
+    row.appendChild(side);
+    card.appendChild(row);
+
+    button.addEventListener('click', async () => {
+      const brief = textarea.value.trim();
+      if (!brief) {
+        textarea.focus();
+        textarea.reportValidity();
+        return;
+      }
+      button.disabled = true;
+      const res = await fetch('/api/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, brief, autonomous: autoCheckbox.checked }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || 'could not start the run');
+        button.disabled = false;
+        return;
+      }
+      const { runId } = await res.json();
+      attachRun(runId, projectLabel(project), { projectId: project.id, brief, autonomous: autoCheckbox.checked });
+      loadProjects();
+    });
+
+    if (project.activeRunId) {
+      attachRun(project.activeRunId, projectLabel(project), lastRun
+        ? { projectId: project.id, brief: lastRun.brief, autonomous: lastRun.autonomous }
+        : { projectId: project.id });
+    }
+
+    return card;
+  }
+
+  async function loadProjects() {
+    const res = await fetch('/api/projects');
+    const projects = await res.json();
+    const list = document.getElementById('projectList');
+    const empty = document.getElementById('emptyProjects');
+    list.innerHTML = '';
+    empty.hidden = projects.length > 0;
+    for (const project of projects) list.appendChild(renderProjectCard(project));
+  }
+  loadProjects();
+
+  document.getElementById('runButton').addEventListener('click', async () => {
+    const briefField = document.getElementById('brief');
+    const brief = briefField.value.trim();
+    if (!brief) {
+      briefField.focus();
+      briefField.reportValidity();
+      return;
+    }
+
+    const mode = document.querySelector('input[name="targetMode"]:checked').value;
+    if (mode === 'clone' && !repoSelect.value) {
+      alert('pick a repo from the dropdown first');
+      return;
+    }
+    if (mode === 'clone' && !branchSelect.value) {
+      alert('pick a branch from the dropdown first');
+      return;
+    }
+    const target = mode === 'create'
+      ? { mode: 'create', name: document.getElementById('newRepoName').value.trim(), isPrivate: document.getElementById('isPrivate').checked }
+      : { mode: 'clone', repoUrl: repoSelect.value, branch: branchSelect.value };
+
+    const runButton = document.getElementById('runButton');
+    runButton.disabled = true;
+
+    const autonomous = document.getElementById('autonomousMode').checked;
+    const res = await fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brief, target, autonomous }),
+    });
+    runButton.disabled = false;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error || 'could not start the run (the team is refusing to work, understandable)');
+      return;
+    }
+    const { runId, projectId } = await res.json();
+    attachRun(runId, mode === 'create' ? target.name : target.repoUrl, { projectId, brief, autonomous });
+    document.getElementById('brief').value = '';
+    newProjectDialog.close();
+    loadProjects();
+  });
+</script>
+</body>
+</html>
