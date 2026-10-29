@@ -6,3 +6,4 @@ app/run-logs/
 # Claude (personal, not shared)
 .claude/settings.local.json
 CLAUDE.local.md
+docs/handoff.md
