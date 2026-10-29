@@ -49,6 +49,7 @@ agents/           generated plugin copies of .claude/agents/**/*.md, flattened �
                   do not hand-edit
 scripts/
   build-plugin.mjs  regenerates agents/ from .claude/agents/
+  split-protocol.mjs regenerates docs/protocol/ from docs/team-protocol.md
 app/
   server/           the local runner: agents.js, orchestrator.js, tool-runtime.js,
                      handoff.js, github.js, config.js, index.js
@@ -56,7 +57,9 @@ app/
   workspaces/       gitignored — one directory per run
 docs/
   org-chart.md      roster + pipelines, condensed
-  team-protocol.md  canonical collaboration protocol agents read at runtime
+  team-protocol.md  canonical collaboration protocol (source of truth)
+  protocol/         generated per-section copies; most roles read only the
+                    sections they need (ceo and dev-lead read the full file)
 tests/
   agents.test.mjs       offline structural + policy tests
   plugin.test.mjs       offline plugin manifest + agents/ sync tests
@@ -75,7 +78,9 @@ department folder, or a new one — the folder is organizational only) with the 
 frontmatter (`name`, `description`, `tools`, `model`) and body sections (`## Scope`,
 `## Hands off to`, `## Guardrails`, `## Output format`), add it to the `POLICY` table
 and `ROSTER` in `tests/agents.test.mjs`, mention it in `docs/team-protocol.md`, and run
-`npm run build:plugin` to regenerate its plugin copy in `agents/`. The test suite
+`npm run build:protocol && npm run build:plugin` to regenerate `docs/protocol/` and its
+plugin copy in `agents/`. Point the role at `docs/protocol/mechanics.md`, `roster.md`
+and only the other sections it needs. The test suite
 fails closed if any of these four are missed.
 
 ## More reference (read only when the task needs it)

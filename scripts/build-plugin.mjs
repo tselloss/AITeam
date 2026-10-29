@@ -13,11 +13,16 @@ import { parseAgentFile, listAgentFiles } from '../app/server/agents.js';
 
 export const PROTOCOL_PATH = 'docs/team-protocol.md';
 export const PLUGIN_PROTOCOL_PATH = '${CLAUDE_PLUGIN_ROOT}/docs/team-protocol.md';
+// Per-section copies from scripts/split-protocol.mjs, resolved the same way.
+export const PROTOCOL_SECTIONS_DIR = 'docs/protocol/';
+export const PLUGIN_PROTOCOL_SECTIONS_DIR = '${CLAUDE_PLUGIN_ROOT}/docs/protocol/';
 
 export function toPluginText(sourcePath) {
   parseAgentFile(sourcePath); // validates frontmatter/BOM before we trust the raw text
   const raw = fs.readFileSync(sourcePath, 'utf8');
-  return raw.split(PROTOCOL_PATH).join(PLUGIN_PROTOCOL_PATH);
+  return raw
+    .split(PROTOCOL_PATH).join(PLUGIN_PROTOCOL_PATH)
+    .split(PROTOCOL_SECTIONS_DIR).join(PLUGIN_PROTOCOL_SECTIONS_DIR);
 }
 
 // Back-compat name used by tests/plugin.test.mjs's per-agent-file assertions.
