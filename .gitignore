@@ -3,3 +3,6 @@ app/.env.local
 app/workspaces/
 app/projects.json
 app/run-logs/
+# Claude (personal, not shared)
+.claude/settings.local.json
+CLAUDE.local.md

@@ -164,3 +164,7 @@ frontmatter (`name`, `description`, `tools`, `model`) and body sections (`## Sco
 and `ROSTER` in `tests/agents.test.mjs`, mention it in `docs/team-protocol.md`, and run
 `npm run build:plugin` to regenerate its plugin copy in `agents/`. The test suite
 fails closed if any of these four are missed.
+
+## Token rules (token-kit)
+- Keep this file short; it is loaded on every turn.
+- Global token rules live in ~/.claude/CLAUDE.md. One task per session; /clear between tasks.

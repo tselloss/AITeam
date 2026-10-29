@@ -16,6 +16,30 @@
       "Bash(grep -iE \"ghp_|github_pat|token.{0,20}=.{0,5}['\\\\\"][a-zA-Z0-9]{20,}|secret|api[_-]?key\")",
       "Bash(echo \"exit:$?\")",
       "Bash(git add *)"
+    ],
+    "deny": [
+      "Read(**/node_modules/**)",
+      "Read(**/bin/Debug/**)",
+      "Read(**/bin/Release/**)",
+      "Read(**/obj/**)",
+      "Read(**/dist/**)",
+      "Read(**/build/**)",
+      "Read(**/.next/**)",
+      "Read(**/coverage/**)",
+      "Read(**/TestResults/**)",
+      "Read(**/.venv/**)",
+      "Read(**/__pycache__/**)",
+      "Read(**/*.min.js)",
+      "Read(**/*.min.css)",
+      "Read(**/*.map)",
+      "Read(**/package-lock.json)",
+      "Read(**/pnpm-lock.yaml)",
+      "Read(**/yarn.lock)",
+      "Read(**/packages.lock.json)",
+      "Read(**/poetry.lock)",
+      "Read(**/uv.lock)",
+      "Read(**/*ModelSnapshot.cs)",
+      "Read(**/.env)"
     ]
   }
 }
